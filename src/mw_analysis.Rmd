@@ -1,0 +1,292 @@
+---
+title: "R Notebook"
+output: html_notebook
+author: "mwinkler"
+---
+
+
+```{r, include=FALSE}
+### Load requirements:
+#if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, skimr, GGally, plotly, viridis, 
+               caret, DT, data.table, lightgbm)
+```
+
+
+### Load data:
+```{r}
+setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/src')
+
+train <-fread('../data/application_train.csv', stringsAsFactors = FALSE, showProgress=F,
+              data.table = F, na.strings=c("NA","NaN","?", ""))
+test <-fread('../data/application_test.csv', stringsAsFactors = FALSE, showProgress=F,
+             data.table = F, na.strings=c("NA","NaN","?", ""))
+bureau <-fread('../data/bureau.csv', stringsAsFactors = FALSE, showProgress=F,
+               data.table = F, na.strings=c("NA","NaN","?", ""))
+prev <-fread('../data/previous_application.csv', stringsAsFactors = FALSE, showProgress=F,
+             data.table = F, na.strings=c("NA","NaN","?", "")) 
+
+```
+
+```{r}
+# store target and IDs
+SK_ID_CURR <- train$SK_ID_CURR
+y <- train$TARGET
+
+drops <- c("SK_ID_CURR", "TARGET")
+train.X <- train[ , !(names(train) %in% drops)]
+
+# summarize train dataset:
+train %>% skim() %>% kable()
+```
+
+```{r}
+# mean of target:
+mean(train$TARGET)
+```
+
+```{r}
+dt <- data.table(train)
+```
+
+```{r}
+# separate classes within the dataframe:
+class.values <- sapply(dt, class)
+ints <- as.vector(class.values == "integer")
+nums <- as.vector(class.values == "numeric")
+chars <- as.vector(class.values == "character")
+
+```
+
+```{r}
+sapply(dt[, ..ints], n_unique)
+```
+
+```{r}
+dt$DAYS_BIRTH <- as.numeric(dt$DAYS_BIRTH)
+dt$DAYS_EMPLOYED <- as.numeric(dt$DAYS_EMPLOYED)
+dt$DAYS_ID_PUBLISH <- as.numeric(dt$DAYS_ID_PUBLISH)
+```
+
+```{r}
+# update class value assignments:
+class.values <- sapply(dt, class)
+```
+
+## Define plotting functions:
+```{r}
+# core plotting for numeric data:
+one_plot <- function(d, colname) {
+  plot_ly(d, x = d[, eval(colname)], type="histogram") %>%
+    add_annotations(
+      ~unique(TARGET), x = 0.5, y = 1, 
+      xref = "paper", yref = "paper", showarrow = FALSE
+    )
+}
+```
+
+```{r}
+# wrapper to call one_plot
+plot.numeric <- function(data, colname) {
+  #defines x axis
+  x.axis <- list(
+    title = colname,
+    titlefont = list(
+      family = "Courier New, monospace",
+      size = 18,
+      color = "#7f7f7f")
+  )
+  
+  # split dataset by target values and call one_plot
+  plt <- data %>%
+    split(.$TARGET) %>%
+    lapply(one_plot, colname=colname) %>% 
+    subplot(nrows = 2, shareX = TRUE, titleX = TRUE) %>%
+    layout(xaxis = x.axis) %>%
+    hide_legend()
+
+  plt
+}
+```
+
+
+```{r}
+# plot proportion of total dataset:
+plot.cat.1 <- function(data, colname) {
+  data %>%
+    mutate(TARGET=as.factor(TARGET)) %>%
+    count(UQ(as.name(colname)), TARGET) %>%
+    mutate(proportion = n / nrow(data)) %>%
+    plot_ly(x = unique(select(data, colname)), y = ~proportion, color = ~TARGET, type="bar") %>%
+     layout(barmode = "stack", 
+            title = colname)
+  
+}
+
+```
+
+```{r}
+plot.cat.2 <- function(data, colname) {
+  data$TARGET = as.factor(data$TARGET)
+  ct = count(data, UQ(as.name(colname)), TARGET)
+  ct.2 <- left_join(ct, count(ct, UQ(as.name(colname)), wt = n))
+  ct.2 %>%
+    mutate(prop = n / nn) %>%
+    plot_ly(x = unique(select(data, colname)), y = ~prop, color = ~TARGET) %>%
+    add_bars() %>%
+    layout(barmode = "stack", 
+           title = colname)
+}
+```
+
+```{r}
+# Loop through columns and make plots:
+for (i in 1:length(class.values)) {
+  obj = class.values[i]
+  cn = names(obj)
+  cv = obj[[1]]
+  # PDF setup:
+  plotname = paste(cn, "_plot.pdf", sep="")
+  if (cv == "numeric") {
+    plt = plot.numeric(dt, cn)
+    print(plt)
+  } else {
+    cat.plt.1 <- plot.cat.1(dt, cn)
+    print(cat.plt.1)
+    cat.plt.2 <- plot.cat.2(dt, cn)
+    print(cat.plt.2)
+  }
+}
+```
+
+There are quite a few highly skewed variables in the dataset. So, look add the logs of all the numerics before checking for relationships with the response in feature selection
+
+```{r}
+dt.copy = dt
+
+for (i in 1:length(class.values)){
+  obj = class.values[i]
+  cn = names(obj)
+  cv = obj[[1]]
+  # identify numerics and find their log
+  if (cv == "numeric") {
+    new.name <- paste(cn, ".log", sep="")
+    log.vals = log(dt.copy[, eval(as.name(cn))])
+    dt.copy[, new.name] <- log.vals
+  }
+  
+}
+
+```
+
+### Look at mutual information gain for feature selection:
+
+```{r}
+#install.packages("infotheo")
+library(infotheo)
+y <- dt.copy$TARGET
+SK_ID_CURR <- dt.copy$SK_ID_CURR
+dt.copy.X <- dt.copy[ , -c("TARGET", "SK_ID_CURR")]
+
+class.values <- sapply(dt.copy.X, class)
+ints <- as.vector(class.values == "integer")
+nums <- as.vector(class.values == "numeric")
+chars <- as.vector(class.values == "character")
+
+n.chars = sum(chars)
+n.ints = sum(ints)
+n.cats = n.chars + n.ints
+ig.vals <- numeric(n.cats)
+cat.col.names <- character(n.cats)
+
+insert.idx = 1
+for (i in 1:length(class.values)) {
+  
+  obj = class.values[i]
+  cn = names(obj)
+  cv = obj[[1]]
+  # identify numerics and find their log
+  if (cv != "numeric") {
+    mi = mutinformation(y, dt.copy.X[, eval(as.name(cn))])
+    ig.vals[insert.idx] = mi
+    cat.col.names[insert.idx] = cn
+    insert.idx = insert.idx + 1
+  }
+}
+
+ig.sort <- sort(ig.vals, decreasing = TRUE, index.return = TRUE)
+cat.col.names[ig.sort$ix]
+
+# very few features carry information on the output. Drop the others
+hist(ig.sort$x, breaks=25)
+
+# which columns carry information:
+cat.keep <- cat.col.names[ig.sort$ix[ig.sort$x > .02]]
+
+```
+
+### Now find the numeric (or log) features that show information gain
+
+```{r}
+
+missing.pcts <- numeric(ncol(dt.copy.X))
+n <- nrow(dt.copy.X)
+
+for (i in 1:length(missing.pcts)) {
+  col.values = dt.copy.X[, i, with = FALSE]
+  null.count = sum(is.na(col.values))
+  null.pct <- null.count / n
+  missing.pcts[i] = null.pct
+}
+
+# columns to get rid of due to missing data
+drops <- names(dt.copy.X)[missing.pcts > .30]
+dt.copy.X.filt = dt.copy.X[ , c(drops) := NULL]
+#rm(dt.copy.X) # get rid of this; can always get it back later if necessary
+
+```
+
+### Impute missing values before running information gain for feature selection:
+```{r}
+class.values <- sapply(dt.copy.X.filt, class)
+#install.packages("Hmisc")
+library(Hmisc)
+#dt.copy.X.filt$TARGET <- y # target variable needs to come last
+# impute missing values:
+dt.copy.X.filt <- data.frame(dt.copy.X.filt)
+
+for (i in 1:length(class.values)) {
+  obj = class.values[i]
+  cn = names(obj)
+  cv = obj[[1]]
+  if (cv == "numeric") {
+    dt.copy.X.filt[, eval(i)] <- with(dt.copy.X.filt, impute(eval(cn), 'median')) 
+  } else {
+    dt.copy.X.filt[, eval(i)] <- with(dt.copy.X.filt, impute(eval(cn), 'mode'))
+  }
+}
+
+
+```
+
+
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+dt.copy.X.filt$TARGET <- y
+set.seed(1234)
+
+head(dt.copy.X.filt)
+dt.X.rf <- randomForest(TARGET ~ ., data=dt.copy.X.filt, ntree=100,
+                          keep.forest=FALSE, importance=TRUE)
+importance(dt.X.rf)
+importance(dt.X.rf, type=1)
+
+
+```
+
+
+```{r}
+
+```
+
