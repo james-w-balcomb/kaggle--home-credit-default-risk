@@ -51,7 +51,7 @@ dt <- data.table(train)
 
 ```{r}
 # separate classes within the dataframe:
-class.values <- sapply(dt, class)
+class.values <- sapply(train.X, class)
 ints <- as.vector(class.values == "integer")
 nums <- as.vector(class.values == "numeric")
 chars <- as.vector(class.values == "character")
@@ -59,25 +59,25 @@ chars <- as.vector(class.values == "character")
 ```
 
 ```{r}
-sapply(dt[, ..ints], n_unique)
+sapply(train.X[, c(ints)], n_unique)
 ```
 
 ```{r}
-dt$DAYS_BIRTH <- as.numeric(dt$DAYS_BIRTH)
-dt$DAYS_EMPLOYED <- as.numeric(dt$DAYS_EMPLOYED)
-dt$DAYS_ID_PUBLISH <- as.numeric(dt$DAYS_ID_PUBLISH)
+train.X$DAYS_BIRTH <- as.numeric(train.X$DAYS_BIRTH)
+train.X$DAYS_EMPLOYED <- as.numeric(train.X$DAYS_EMPLOYED)
+train.X$DAYS_ID_PUBLISH <- as.numeric(train.X$DAYS_ID_PUBLISH)
 ```
 
 ```{r}
 # update class value assignments:
-class.values <- sapply(dt, class)
+class.values <- sapply(train.X, class)
 ```
 
 ## Define plotting functions:
 ```{r}
 # core plotting for numeric data:
 one_plot <- function(d, colname) {
-  plot_ly(d, x = d[, eval(colname)], type="histogram") %>%
+  plot_ly(d, x = d[, colname], type="histogram") %>%
     add_annotations(
       ~unique(TARGET), x = 0.5, y = 1, 
       xref = "paper", yref = "paper", showarrow = FALSE
@@ -141,6 +141,7 @@ plot.cat.2 <- function(data, colname) {
 
 ```{r}
 # Loop through columns and make plots:
+train.X$TARGET <- y
 for (i in 1:length(class.values)) {
   obj = class.values[i]
   cn = names(obj)
@@ -148,12 +149,12 @@ for (i in 1:length(class.values)) {
   # PDF setup:
   plotname = paste(cn, "_plot.pdf", sep="")
   if (cv == "numeric") {
-    plt = plot.numeric(dt, cn)
+    plt = plot.numeric(train.X, cn)
     print(plt)
   } else {
-    cat.plt.1 <- plot.cat.1(dt, cn)
+    cat.plt.1 <- plot.cat.1(train.X, cn)
     print(cat.plt.1)
-    cat.plt.2 <- plot.cat.2(dt, cn)
+    cat.plt.2 <- plot.cat.2(train.X, cn)
     print(cat.plt.2)
   }
 }
@@ -162,7 +163,6 @@ for (i in 1:length(class.values)) {
 There are quite a few highly skewed variables in the dataset. So, look add the logs of all the numerics before checking for relationships with the response in feature selection
 
 ```{r}
-dt.copy = dt
 
 for (i in 1:length(class.values)){
   obj = class.values[i]
@@ -171,11 +171,12 @@ for (i in 1:length(class.values)){
   # identify numerics and find their log
   if (cv == "numeric") {
     new.name <- paste(cn, ".log", sep="")
-    log.vals = log(dt.copy[, eval(as.name(cn))])
-    dt.copy[, new.name] <- log.vals
+    log.vals = log(train.X[, cn] + 1)
+    train.X[, new.name] <- log.vals
   }
   
 }
+
 
 ```
 
@@ -184,11 +185,9 @@ for (i in 1:length(class.values)){
 ```{r}
 #install.packages("infotheo")
 library(infotheo)
-y <- dt.copy$TARGET
-SK_ID_CURR <- dt.copy$SK_ID_CURR
-dt.copy.X <- dt.copy[ , -c("TARGET", "SK_ID_CURR")]
 
-class.values <- sapply(dt.copy.X, class)
+train.X <- train.X[, -121] # removes TARGET column
+class.values <- sapply(train.X, class) # update class.values with new columns
 ints <- as.vector(class.values == "integer")
 nums <- as.vector(class.values == "numeric")
 chars <- as.vector(class.values == "character")
@@ -207,7 +206,7 @@ for (i in 1:length(class.values)) {
   cv = obj[[1]]
   # identify numerics and find their log
   if (cv != "numeric") {
-    mi = mutinformation(y, dt.copy.X[, eval(as.name(cn))])
+    mi = mutinformation(y, train.X[, cn])
     ig.vals[insert.idx] = mi
     cat.col.names[insert.idx] = cn
     insert.idx = insert.idx + 1
@@ -215,7 +214,7 @@ for (i in 1:length(class.values)) {
 }
 
 ig.sort <- sort(ig.vals, decreasing = TRUE, index.return = TRUE)
-cat.col.names[ig.sort$ix]
+#cat.col.names[ig.sort$ix]
 
 # very few features carry information on the output. Drop the others
 hist(ig.sort$x, breaks=25)
