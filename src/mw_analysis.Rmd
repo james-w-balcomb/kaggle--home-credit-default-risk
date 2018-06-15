@@ -5,7 +5,7 @@ author: "mwinkler"
 ---
 
 
-```{r, include=FALSE}
+```{r, include=FALSE, knitr=FALSE}
 ### Load requirements:
 #if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, skimr, GGally, plotly, viridis, 
@@ -32,8 +32,8 @@ prev <-fread('../data/previous_application.csv', stringsAsFactors = FALSE, showP
 # store target and IDs
 SK_ID_CURR <- train$SK_ID_CURR
 y <- train$TARGET
-
 drops <- c("SK_ID_CURR", "TARGET")
+
 train.X <- train[ , !(names(train) %in% drops)]
 
 # summarize train dataset:
@@ -43,10 +43,6 @@ train %>% skim() %>% kable()
 ```{r}
 # mean of target:
 mean(train$TARGET)
-```
-
-```{r}
-dt <- data.table(train)
 ```
 
 ```{r}
@@ -122,7 +118,6 @@ plot.cat.1 <- function(data, colname) {
             title = colname)
   
 }
-
 ```
 
 ```{r}
@@ -160,8 +155,88 @@ for (i in 1:length(class.values)) {
 }
 ```
 
-There are quite a few highly skewed variables in the dataset. So, look add the logs of all the numerics before checking for relationships with the response in feature selection
+From looking at the kable() output above, there are numerous features with lots of NA values.  Check the proportion of NAs in the data, remove those with > 30% NA for now.
 
+
+```{r}
+missing.pcts <- numeric(ncol(train.X))
+n <- nrow(train.X)
+
+for (i in 1:length(missing.pcts)) {
+  col.values = train.X[, i]
+  null.count = sum(is.na(col.values))
+  null.pct <- null.count / n
+  missing.pcts[i] = null.pct
+}
+
+# columns to get rid of due to missing data
+drops <- names(train.X)[missing.pcts > .30]
+
+train.X.filt = train.X[ , !(names(train.X) %in% drops)]
+#rm(dt.copy.X) # get rid of this; can always get it back later if necessary
+
+```
+
+
+### Some more data formatting:
+```{r}
+class.values <- sapply(train.X.filt, class)
+ints <- class.values == "integer"
+nums <- class.values == "numeric"
+char <- class.values == "character"
+
+sapply(train.X.filt[, ints], n_unique)
+
+train.X.filt$CNT_CHILDREN <- as.numeric(train.X.filt$CNT_CHILDREN)
+train.X.filt$HOUR_APPR_PROCESS_START <- as.numeric(train.X.filt$HOUR_APPR_PROCESS_START)
+
+
+# reformat to numerics and factors:
+train.X.filt <- train.X.filt %>% mutate_if(is.character, as.factor)
+train.X.filt <- train.X.filt %>% mutate_if(is.integer, as.factor)
+
+class.values <- sapply(train.X.filt, class)
+facs <- class.values == "factor"
+nums <- class.values == "numeric"
+
+```
+
+
+Now that we have a dataset with a reasonable proportion of missing values, fill in the NA's with the median (numerics) or mode (categoricals).
+
+```{r}
+library(Hmisc)
+
+for (i in 1:length(class.values)) {
+  obj = class.values[i]
+  cn = names(obj)
+  cv = obj[[1]]
+  if (cv == "numeric") {
+    train.X.filt[, i] <- as.numeric(impute(train.X.filt[, i], median))
+  } else {
+    train.X.filt[, i] <- as.factor(impute(train.X.filt[, i], mode))
+  }
+}
+
+```
+
+
+### There are also values on a negative scale in this dataset.
+These come from the set of columns defining days between certain actions *before* the application. That being the case, it seems reasonable to set any negative values to 0, since those would represent actions occuring *after* the application.  DAYS_BIRTH is different, and its values should be negated since they're all negative.
+
+```{r}
+#update DAYS_BIRTH:
+train.X.filt$DAYS_BIRTH <- -train.X.filt$DAYS_BIRTH
+train.X.filt$DAYS_ID_PUBLISH <- -train.X.filt$DAYS_ID_PUBLISH
+
+#update other DAYS_ features:
+train.X.filt[train.X.filt$DAYS_EMPLOYED < 0, c("DAYS_EMPLOYED")] <- 0
+train.X.filt[train.X.filt$DAYS_REGISTRATION < 0, c("DAYS_REGISTRATION")] <- 0
+train.X.filt[train.X.filt$DAYS_LAST_PHONE_CHANGE < 0, c("DAYS_LAST_PHONE_CHANGE")] <- 0
+
+```
+
+### Now take logs on numeric columns 
 ```{r}
 
 for (i in 1:length(class.values)){
@@ -171,12 +246,10 @@ for (i in 1:length(class.values)){
   # identify numerics and find their log
   if (cv == "numeric") {
     new.name <- paste(cn, ".log", sep="")
-    log.vals = log(train.X[, cn] + 1)
-    train.X[, new.name] <- log.vals
+    log.vals = log(train.X.filt[, i] + 1)
+    train.X.filt[, new.name] <- log.vals
   }
-  
 }
-
 
 ```
 
@@ -186,17 +259,13 @@ for (i in 1:length(class.values)){
 #install.packages("infotheo")
 library(infotheo)
 
-train.X <- train.X[, -121] # removes TARGET column
-class.values <- sapply(train.X, class) # update class.values with new columns
-ints <- as.vector(class.values == "integer")
+class.values <- sapply(train.X.filt, class) # update class.values
+facs <- as.vector(class.values == "integer")
 nums <- as.vector(class.values == "numeric")
-chars <- as.vector(class.values == "character")
 
-n.chars = sum(chars)
-n.ints = sum(ints)
-n.cats = n.chars + n.ints
-ig.vals <- numeric(n.cats)
-cat.col.names <- character(n.cats)
+n.facs <- sum(facs)
+ig.vals <- numeric(n.facs)
+fac.col.names <- character(n.facs)
 
 insert.idx = 1
 for (i in 1:length(class.values)) {
@@ -206,9 +275,9 @@ for (i in 1:length(class.values)) {
   cv = obj[[1]]
   # identify numerics and find their log
   if (cv != "numeric") {
-    mi = mutinformation(y, train.X[, cn])
+    mi = mutinformation(y, train.X.filt[, i])
     ig.vals[insert.idx] = mi
-    cat.col.names[insert.idx] = cn
+    fac.col.names[insert.idx] = cn
     insert.idx = insert.idx + 1
   }
 }
@@ -219,68 +288,112 @@ ig.sort <- sort(ig.vals, decreasing = TRUE, index.return = TRUE)
 # very few features carry information on the output. Drop the others
 hist(ig.sort$x, breaks=25)
 
+
 # which columns carry information:
-cat.keep <- cat.col.names[ig.sort$ix[ig.sort$x > .02]]
-
+fac.keep <- fac.col.names[ig.sort$ix[ig.sort$x > .0001]]
 ```
-
-### Now find the numeric (or log) features that show information gain
-
-```{r}
-
-missing.pcts <- numeric(ncol(dt.copy.X))
-n <- nrow(dt.copy.X)
-
-for (i in 1:length(missing.pcts)) {
-  col.values = dt.copy.X[, i, with = FALSE]
-  null.count = sum(is.na(col.values))
-  null.pct <- null.count / n
-  missing.pcts[i] = null.pct
-}
-
-# columns to get rid of due to missing data
-drops <- names(dt.copy.X)[missing.pcts > .30]
-dt.copy.X.filt = dt.copy.X[ , c(drops) := NULL]
-#rm(dt.copy.X) # get rid of this; can always get it back later if necessary
-
-```
-
-### Impute missing values before running information gain for feature selection:
-```{r}
-class.values <- sapply(dt.copy.X.filt, class)
-#install.packages("Hmisc")
-library(Hmisc)
-#dt.copy.X.filt$TARGET <- y # target variable needs to come last
-# impute missing values:
-dt.copy.X.filt <- data.frame(dt.copy.X.filt)
-
-for (i in 1:length(class.values)) {
-  obj = class.values[i]
-  cn = names(obj)
-  cv = obj[[1]]
-  if (cv == "numeric") {
-    dt.copy.X.filt[, eval(i)] <- with(dt.copy.X.filt, impute(eval(cn), 'median')) 
-  } else {
-    dt.copy.X.filt[, eval(i)] <- with(dt.copy.X.filt, impute(eval(cn), 'mode'))
-  }
-}
-
-
-```
-
 
 ```{r}
 #install.packages("randomForest")
 library(randomForest)
-dt.copy.X.filt$TARGET <- y
+train.X.filt$TARGET <- as.factor(y)
 set.seed(1234)
 
-head(dt.copy.X.filt)
-dt.X.rf <- randomForest(TARGET ~ ., data=dt.copy.X.filt, ntree=100,
-                          keep.forest=FALSE, importance=TRUE)
-importance(dt.X.rf)
-importance(dt.X.rf, type=1)
+# randomForest can't handle categoricals with more than 53 levels:
+class.values <- sapply(train.X.filt, class)
+unique(class.values)
+facs <- as.vector(class.values == "factor")
+non.nums <- class.values != "numeric"
 
+# ORGANIZATION TYPE column has many levels.  Collapse them based on the outer type:
+sapply(train.X.filt[, non.nums], n_unique)
+table(train.X.filt$ORGANIZATION_TYPE)
+
+library(forcats)
+train.X.filt$ORGANIZATION_TYPE <- fct_collapse(train.X.filt$ORGANIZATION_TYPE,                                                 Advertising = "Advertising",
+                                              Agriculture = "Agriculture",
+                                              Bank = "Bank",
+                                              Business_Entity = c("Business Entity Type 1", "Business Entity Type 2", "Business Entity Type 3"), 
+                                              Cleaning = "Cleaning",
+                                              Construction = "Construction",
+                                              Culture = "Culture",
+                                              Electriciy = "Electricity",
+                                              Emergency = "Emergency",
+                                              Government = "Government",
+                                              Hotel = "Hotel",
+                                              Housing = "Housing",
+                                              Industry = c("Industry: type 1",
+                                                           "Industry: type 2",
+                                                           "Industry: type 3",
+                                                           "Industry: type 4",
+                                                           "Industry: type 5",
+                                                           "Industry: type 6",
+                                                           "Industry: type 7",
+                                                           "Industry: type 8",
+                                                           "Industry: type 9",
+                                                           "Industry: type 10",
+                                                           "Industry: type 11",
+                                                           "Industry: type 12",
+                                                           "Industry: type 13"),
+                                              Insurance = "Insurance",
+                                              Kindergarten = "Kindergarten",
+                                              Legal_Services = "Legal Services",
+                                              Medicine = "Medicine",
+                                              Military = "Military",
+                                              Mobile = "Mobile",
+                                              Other = "Other",
+                                              Police = "Police",
+                                              Postal = "Postal",
+                                              Realtor = "Realtor",
+                                              Religion = "Religion",
+                                              Restaurant = "Restaurant",
+                                              School = "School",
+                                              Security = c("Security", "Security Ministries"),
+                                              Self_Employed = "Self-employed",
+                                              Services = "Services",
+                                              Telecom = "Telecom",
+                                              Trade = c("Trade: type 1",
+                                                        "Trade: type 2",
+                                                        "Trade: type 3",
+                                                        "Trade: type 4",
+                                                        "Trade: type 5",
+                                                        "Trade: type 6",
+                                                        "Trade: type 7"),
+                                              Transport = c("Transport: type 1",
+                                                            "Transport: type 2",
+                                                            "Transport: type 3",
+                                                            "Transport: type 4"),
+                                              University = "University",
+                                              XNA = "XNA")
+
+table(train.X.filt$ORGANIZATION_TYPE)
+
+
+# build random forest
+train.rf <- randomForest(TARGET ~ ., data=train.X.filt, ntree=100,
+                          keep.forest=TRUE, importance=TRUE)
+
+# try rfcv for feature selection
+?importance
+importance(train.rf, type=2) # decrease in gini impurity
+importance(train.rf, type=1) # decrease in prediction accuracy
+
+?varImpPlot
+varImpPlot(train.rf, n.var=50)
+
+#notes:
+
+# average the Ext source values together
+
+
+```
+
+### Check prediction accuracy on the training data:
+```{r}
+
+train.X.filt.p <- train.X.filt[, -96] # drop target variable
+
+y.pred <- predict(train.rf, train.X.filt.p)
 
 ```
 
