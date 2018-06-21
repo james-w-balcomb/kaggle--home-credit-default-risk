@@ -110,6 +110,12 @@ plot.numeric <- function(data, colname) {
 
   plt
 }
+
+c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION_AVG','YEARS_BUILD_AVG','COMMONAREA_AVG','ELEVATORS_AVG','ENTRANCES_AVG','FLOORSMAX_AVG','FLOORSMIN_AVG','LANDAREA_AVG','LIVINGAPARTMENTS_AVG','LIVINGAREA_AVG','NONLIVINGAPARTMENTS_AVG','NONLIVINGAREA_AVG','APARTMENTS_MODE','BASEMENTAREA_MODE','YEARS_BEGINEXPLUATATION_MODE','YEARS_BUILD_MODE','COMMONAREA_MODE','ELEVATORS_MODE','ENTRANCES_MODE','FLOORSMAX_MODE','FLOORSMIN_MODE','LANDAREA_MODE','LIVINGAPARTMENTS_MODE','LIVINGAREA_MODE','NONLIVINGAPARTMENTS_MODE','NONLIVINGAREA_MODE','APARTMENTS_MEDI','BASEMENTAREA_MEDI','YEARS_BEGINEXPLUATATION_MEDI','YEARS_BUILD_MEDI','COMMONAREA_MEDI','ELEVATORS_MEDI','ENTRANCES_MEDI','FLOORSMAX_MEDI','FLOORSMIN_MEDI','LANDAREA_MEDI','LIVINGAPARTMENTS_MEDI','LIVINGAREA_MEDI','NONLIVINGAPARTMENTS_MEDI','NONLIVINGAREA_MEDI','TOTALAREA_MODE')
+
+train.X$TARGET <- y
+train.X$NONLIVINGAREA_MEDI.log <- log(train.X$NONLIVINGAREA_MEDI)
+plot.numeric(train.X, "NONLIVINGAREA_MEDI.log")
 ```
 
 
@@ -173,6 +179,8 @@ for (i in 1:length(missing.pcts)) {
   null.count = sum(is.na(col.values))
   null.pct <- null.count / n
   missing.pcts[i] = null.pct
+  print(missing.pcts[i])
+  print(class.values[i])
 }
 
 # columns to get rid of due to missing data
@@ -182,6 +190,81 @@ train.X.filt = train.X[ , !(names(train.X) %in% drops)]
 #rm(dt.copy.X) # get rid of this; can always get it back later if necessary
 
 ```
+
+There are a large number of missing values in the statistics describing the type of housing sought by the applicant.  Dig into this set of variables to determine their relationship to one another and to the target.
+
+```{r}
+
+#paste0(names(train.X), collapse="','")
+house <- train.X[,c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION_AVG','YEARS_BUILD_AVG','COMMONAREA_AVG','ELEVATORS_AVG','ENTRANCES_AVG','FLOORSMAX_AVG','FLOORSMIN_AVG','LANDAREA_AVG','LIVINGAPARTMENTS_AVG','LIVINGAREA_AVG','NONLIVINGAPARTMENTS_AVG','NONLIVINGAREA_AVG','APARTMENTS_MODE','BASEMENTAREA_MODE','YEARS_BEGINEXPLUATATION_MODE','YEARS_BUILD_MODE','COMMONAREA_MODE','ELEVATORS_MODE','ENTRANCES_MODE','FLOORSMAX_MODE','FLOORSMIN_MODE','LANDAREA_MODE','LIVINGAPARTMENTS_MODE','LIVINGAREA_MODE','NONLIVINGAPARTMENTS_MODE','NONLIVINGAREA_MODE','APARTMENTS_MEDI','BASEMENTAREA_MEDI','YEARS_BEGINEXPLUATATION_MEDI','YEARS_BUILD_MEDI','COMMONAREA_MEDI','ELEVATORS_MEDI','ENTRANCES_MEDI','FLOORSMAX_MEDI','FLOORSMIN_MEDI','LANDAREA_MEDI','LIVINGAPARTMENTS_MEDI','LIVINGAREA_MEDI','NONLIVINGAPARTMENTS_MEDI','NONLIVINGAREA_MEDI','TOTALAREA_MODE')]
+
+# categorical housing type columns with lots of missing values:
+# HOUSETYPE_MODE, WALLSMATERIAL_MODE, EMERGENCYSTATE_MODE, FONDKAPREMONT_MODE
+
+table(complete.cases(house))
+```
+
+### Adjust for any non-NA outliers:
+```{r}
+
+for (n in names(house)) {
+  x <- house[, n]
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+  caps <- quantile(x, probs=c(.05, .95), na.rm = T)
+  H <- 1.5 * IQR(x, na.rm = T)
+  x[x < (qnt[1] - H)] <- caps[1]
+  x[x > (qnt[2] + H)] <- caps[2]
+  house[, n] <- x
+}
+
+```
+
+
+```{r}
+library(corrplot)
+cors <- cor(house[complete.cases(house), ])
+corrplot(cors, type = "upper", order = "hclust", 
+         tl.col = "black", tl.cex = 0.5, tl.srt = 45)
+```
+
+Each set of the housing variables shows high correlations among its component variables, which isn't a huge surprise.  There are also high correlations between several of the component sets.  Do some basic exploration to determine how related these are to the output variable before looking at techniques to keep this information.
+
+```{r}
+
+house.comp <- house[complete.cases(house), ]
+house.comp$TARGET <- y[complete.cases(house)]
+house.comp.f <- house.comp[, c(29:43)]
+names(house.comp.f)
+
+house.comp.f$TARGET <- house.comp$TARGET
+mod <- glm(TARGET ~ .,family=binomial(link='logit'), data=house.comp.f)
+
+summary(mod)
+anova(mod, test="Chisq")
+```
+
+From this information, it appears that there's a positive relationship between variables related to the size and age of the building and the target, with larger buildings predictive of higher default rates.  But, it's difficult to determine their ultimate value because of the high correlations among the input variables. From running the above with the _AVG, _MODE, and _MEDI variables separately, the same types of information seem to matter.  Using the _MEDI set in PCA.
+
+```{r}
+#house.comp.f.log <- data.frame(apply(house.comp.f, MARGIN=2, FUN=log))
+#house.sc <- scale(house.comp.f, scale=TRUE)
+
+#house.comp.f <- house.comp.f[, -16]
+house.comp.f.pc <- princomp(house.comp.f)
+plot(house.comp.f.pc)
+summary(house.comp.f.pc)
+
+```
+
+
+Based on the above, take the first eight PCs for housing variables.
+
+```{r}
+
+house.comp.f.pc$loadings
+
+```
+
 
 
 ### Some more data formatting:
