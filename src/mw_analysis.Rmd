@@ -9,7 +9,7 @@ author: "mwinkler"
 ### Load requirements:
 #if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, skimr, GGally, plotly, viridis, 
-               caret, DT, data.table, lightgbm)
+               caret, DT, data.table)
 ```
 
 
@@ -19,10 +19,13 @@ setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/src'
 
 train <-fread('../data/application_train.csv', stringsAsFactors = FALSE, showProgress=F,
               data.table = F, na.strings=c("NA","NaN","?", ""))
+
 test <-fread('../data/application_test.csv', stringsAsFactors = FALSE, showProgress=F,
              data.table = F, na.strings=c("NA","NaN","?", ""))
+
 bureau <-fread('../data/bureau.csv', stringsAsFactors = FALSE, showProgress=F,
                data.table = F, na.strings=c("NA","NaN","?", ""))
+
 prev <-fread('../data/previous_application.csv', stringsAsFactors = FALSE, showProgress=F,
              data.table = F, na.strings=c("NA","NaN","?", "")) 
 
@@ -35,7 +38,9 @@ y <- train$TARGET
 drops <- c("SK_ID_CURR", "TARGET")
 
 train.X <- train[ , !(names(train) %in% drops)]
+```
 
+```{r}
 # summarize train dataset:
 train %>% skim() %>% kable()
 ```
@@ -59,6 +64,7 @@ sapply(train.X[, c(ints)], n_unique)
 ```
 
 ```{r}
+# cast selected columns as numerics:
 train.X$DAYS_BIRTH <- as.numeric(train.X$DAYS_BIRTH)
 train.X$DAYS_EMPLOYED <- as.numeric(train.X$DAYS_EMPLOYED)
 train.X$DAYS_ID_PUBLISH <- as.numeric(train.X$DAYS_ID_PUBLISH)
@@ -69,7 +75,8 @@ train.X$DAYS_ID_PUBLISH <- as.numeric(train.X$DAYS_ID_PUBLISH)
 class.values <- sapply(train.X, class)
 ```
 
-## Define plotting functions:
+
+## Define plotting functions to look at individual variables:
 ```{r}
 # core plotting for numeric data:
 one_plot <- function(d, colname) {
@@ -157,7 +164,6 @@ for (i in 1:length(class.values)) {
 
 From looking at the kable() output above, there are numerous features with lots of NA values.  Check the proportion of NAs in the data, remove those with > 30% NA for now.
 
-
 ```{r}
 missing.pcts <- numeric(ncol(train.X))
 n <- nrow(train.X)
@@ -185,13 +191,12 @@ ints <- class.values == "integer"
 nums <- class.values == "numeric"
 char <- class.values == "character"
 
-sapply(train.X.filt[, ints], n_unique)
-
+#sapply(train.X.filt[, ints], n_unique)
+# cast features to numeric where appropriate:
 train.X.filt$CNT_CHILDREN <- as.numeric(train.X.filt$CNT_CHILDREN)
 train.X.filt$HOUR_APPR_PROCESS_START <- as.numeric(train.X.filt$HOUR_APPR_PROCESS_START)
 
-
-# reformat to numerics and factors:
+# reformat characters to factors:
 train.X.filt <- train.X.filt %>% mutate_if(is.character, as.factor)
 train.X.filt <- train.X.filt %>% mutate_if(is.integer, as.factor)
 
@@ -222,22 +227,63 @@ for (i in 1:length(class.values)) {
 
 
 ### There are also values on a negative scale in this dataset.
-These come from the set of columns defining days between certain actions *before* the application. That being the case, it seems reasonable to set any negative values to 0, since those would represent actions occuring *after* the application.  DAYS_BIRTH is different, and its values should be negated since they're all negative.
+These come from the set of columns defining days between certain actions *before* the application. That being the case, it seems reasonable to set any negative values to 0, since those would represent actions occuring *after* the application.  DAYS_BIRTH is different, and its values should be negated since they're all negative. 
+
+DAYS_EMPLOYED is another interesting case. The majority of its values are below zero, representing the number of days before the application that the applicant started their current job. A significant portion of the values for this feature, however, have a value of 365243. My interpretation of those observations is that they represent people who started their current job AFTER the application, or who are currently unemployed.  We want to know the likelihood that someone will default based on the information available at the time the application was created, so set these values to the median observed among the valid (i.e. negative) observations.
 
 ```{r}
-#update DAYS_BIRTH:
+
+# update DAYS_ features that are on negative scale:
 train.X.filt$DAYS_BIRTH <- -train.X.filt$DAYS_BIRTH
 train.X.filt$DAYS_ID_PUBLISH <- -train.X.filt$DAYS_ID_PUBLISH
+train.X.filt$DAYS_REGISTRATION <- -train.X.filt$DAYS_REGISTRATION
+train.X.filt$DAYS_LAST_PHONE_CHANGE <- -train.X.filt$DAYS_LAST_PHONE_CHANGE
 
-#update other DAYS_ features:
-train.X.filt[train.X.filt$DAYS_EMPLOYED < 0, c("DAYS_EMPLOYED")] <- 0
-train.X.filt[train.X.filt$DAYS_REGISTRATION < 0, c("DAYS_REGISTRATION")] <- 0
-train.X.filt[train.X.filt$DAYS_LAST_PHONE_CHANGE < 0, c("DAYS_LAST_PHONE_CHANGE")] <- 0
+# update DAYS_EMPLOYED differently
+f <- train.X.filt$DAYS_EMPLOYED < 0
+#hist(train.X.filt[f, c("DAYS_EMPLOYED")])
+#max(train.X.filt[f, c("DAYS_EMPLOYED")])
+days.emp.med <- median(train.X.filt[f, c("DAYS_EMPLOYED")])
+
+train.X.filt[train.X.filt$DAYS_EMPLOYED > 0, c("DAYS_EMPLOYED")] <- days.emp.med
+train.X.filt$DAYS_EMPLOYED <- -train.X.filt$DAYS_EMPLOYED
 
 ```
 
+
+### Look at correlation matrix on numeric input variables
+```{r}
+#install.packages("corrplot")
+library(corrplot)
+
+cors <- cor(train.X.filt[, nums])
+corrplot(cors, type = "upper", order = "hclust", 
+         tl.col = "black", tl.cex = 0.5, tl.srt = 45)
+
+train.X.filt$OBS_30_CNT_SOCIAL_CIRCLE
+
+```
+
+Some of the numerics are redundant. List below:
+- CNT_CHILDREN <--> CNT_FAMILY_MEMBERS: Keep total family members
+- OBS_30_CNT_SOCIAL_CIRCLE <--> OBS_60_CNT_SOCIAL_CIRCLE: Keep 60
+- DEF_30_CNT_SOCIAL_CIRCLE <--> OBS_60_CNT_SOCIAL_CIRCLE: Keep 60
+- AMT_ANNUITY <-- > AMT_CREDIT: Keep AMT_CREDIT
+- AMT_CREDIT <--> AMT_GOODS_PRICE: Keep AMT_CREDIT
+
+
+### Remove redundant columns as described above:
+```{r}
+train.X.filt <- train.X.filt[, !names(train.X.filt) %in% c("CNT_CHILDREN", "OBS_30_CNT_SOCIAL_CIRCLE", "DEF_30_CNT_SOCIAL_CIRCLE", "AMT_ANNUITY", "AMT_GOODS_PRICE")]
+
+```
+
+
+
 ### Now take logs on numeric columns 
 ```{r}
+
+class.values <- sapply(train.X.filt, class)
 
 for (i in 1:length(class.values)){
   obj = class.values[i]
