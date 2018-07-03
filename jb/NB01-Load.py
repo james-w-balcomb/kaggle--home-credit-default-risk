@@ -90,7 +90,7 @@ np.set_printoptions(suppress=True, formatter={'float_kind':'{:f}'.format})
 
 #import C:/Development/kaggle--home-credit-default-risk/rand_jitter
 #import C:/Development/kaggle--home-credit-default-risk/draw_feature_distribution
-import sys
+
 # sys.path.insert(0, 'C:/Development/kaggle--home-credit-default-risk/') # ~= sys.path.prepend
 sys.path.append('C:/Development/kaggle--home-credit-default-risk/')
 # import rand_jitter
@@ -119,33 +119,30 @@ print("IPython version: {}".format(IPython.__version__))
 # In[3]:
 
 
-seed = 1234567890
-random.seed(seed)
-np.random.seed(seed)
+random_seed = 1234567890
+random.seed(random_seed)
+np.random.seed(random_seed)
 
 
 # In[4]:
 
 
-data_file_path = 'DATA_FILE_PATH' in os.environ
-data_file_path
-
-
-# In[5]:
-
-
 # Set configuration based on environment variables
-# os.environ['DATA_FILE_PATH']
-data_file_path = 'DATA_FILE_PATH' in os.environ
-if data_file_path:
+if os.getenv('HCDR_DATA_FILE_PATH'):
     print('Using Environment Variable for data_file_path')
+    data_file_path = os.getenv('HCDR_DATA_FILE_PATH')
+    data_file_path = os.path.join(data_file_path, '')
+#TODO(JamesBalcomb): add code to fall back on .config file
+#else:
+#    'kaggle--home-credit-default-risk.config'
 else:
-    data_file_path = 'C:/Development/kaggle--home-credit-default-risk/data/'
     print('Using Hard-Coded Configuration for data_file_path')
+    data_file_path = 'C:/Development/kaggle--home-credit-default-risk/data/'
+    data_file_path = os.path.join(data_file_path, '')
 print('data_file_path: ', data_file_path)
 
 
-# In[6]:
+# In[5]:
 
 
 data_file_names = [
@@ -161,12 +158,12 @@ data_file_names = [
 data_file_names
 
 
-# In[7]:
+# In[6]:
 
 
-df_names_and_files = [
-    ['df1','application_test.csv'],
-    ['df2','application_train.csv'],
+df_dataframe_names_and_files = [
+    ['df1','application_train.csv'],
+    ['df2','application_test.csv'],
     ['df3','bureau.csv'],
     ['df4','bureau_balance.csv'],
     ['df5','credit_card_balance.csv'],
@@ -174,7 +171,23 @@ df_names_and_files = [
     ['df7','POS_CASH_balance.csv'],
     ['df8','previous_application.csv']
 ]
-df_names_and_files
+df_dataframe_names_and_files
+
+
+# In[7]:
+
+
+df_dataset_names_and_files = [
+    ['ds1','application_train.csv'],
+    ['ds2','application_test.csv'],
+    ['ds3','bureau.csv'],
+    ['ds4','bureau_balance.csv'],
+    ['ds5','credit_card_balance.csv'],
+    ['ds6','installments_payments.csv'],
+    ['ds7','POS_CASH_balance.csv'],
+    ['ds8','previous_application.csv']
+]
+df_dataset_names_and_files
 
 
 # In[8]:
