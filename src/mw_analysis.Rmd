@@ -10,6 +10,7 @@ author: "mwinkler"
 #if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, skimr, GGally, plotly, viridis, 
                caret, DT, data.table)
+
 ```
 
 
@@ -42,7 +43,7 @@ train.X <- train[ , !(names(train) %in% drops)]
 
 ```{r}
 # summarize train dataset:
-train %>% skim() %>% kable()
+train.X %>% skim() %>% kable()
 ```
 
 ```{r}
@@ -111,11 +112,6 @@ plot.numeric <- function(data, colname) {
   plt
 }
 
-c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION_AVG','YEARS_BUILD_AVG','COMMONAREA_AVG','ELEVATORS_AVG','ENTRANCES_AVG','FLOORSMAX_AVG','FLOORSMIN_AVG','LANDAREA_AVG','LIVINGAPARTMENTS_AVG','LIVINGAREA_AVG','NONLIVINGAPARTMENTS_AVG','NONLIVINGAREA_AVG','APARTMENTS_MODE','BASEMENTAREA_MODE','YEARS_BEGINEXPLUATATION_MODE','YEARS_BUILD_MODE','COMMONAREA_MODE','ELEVATORS_MODE','ENTRANCES_MODE','FLOORSMAX_MODE','FLOORSMIN_MODE','LANDAREA_MODE','LIVINGAPARTMENTS_MODE','LIVINGAREA_MODE','NONLIVINGAPARTMENTS_MODE','NONLIVINGAREA_MODE','APARTMENTS_MEDI','BASEMENTAREA_MEDI','YEARS_BEGINEXPLUATATION_MEDI','YEARS_BUILD_MEDI','COMMONAREA_MEDI','ELEVATORS_MEDI','ENTRANCES_MEDI','FLOORSMAX_MEDI','FLOORSMIN_MEDI','LANDAREA_MEDI','LIVINGAPARTMENTS_MEDI','LIVINGAREA_MEDI','NONLIVINGAPARTMENTS_MEDI','NONLIVINGAREA_MEDI','TOTALAREA_MODE')
-
-train.X$TARGET <- y
-train.X$NONLIVINGAREA_MEDI.log <- log(train.X$NONLIVINGAREA_MEDI)
-plot.numeric(train.X, "NONLIVINGAREA_MEDI.log")
 ```
 
 
@@ -150,6 +146,7 @@ plot.cat.2 <- function(data, colname) {
 ```{r}
 # Loop through columns and make plots:
 train.X$TARGET <- y
+
 for (i in 1:length(class.values)) {
   obj = class.values[i]
   cn = names(obj)
@@ -179,11 +176,9 @@ for (i in 1:length(missing.pcts)) {
   null.count = sum(is.na(col.values))
   null.pct <- null.count / n
   missing.pcts[i] = null.pct
-  print(missing.pcts[i])
-  print(class.values[i])
 }
 
-# columns to get rid of due to missing data
+# columns to get rid of due to missing data - TODO: optimize setting
 drops <- names(train.X)[missing.pcts > .30]
 
 train.X.filt = train.X[ , !(names(train.X) %in% drops)]
@@ -200,8 +195,6 @@ house <- train.X[,c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION
 
 # categorical housing type columns with lots of missing values:
 # HOUSETYPE_MODE, WALLSMATERIAL_MODE, EMERGENCYSTATE_MODE, FONDKAPREMONT_MODE
-
-table(complete.cases(house))
 ```
 
 ### Adjust for any non-NA outliers:
@@ -276,10 +269,11 @@ char <- class.values == "character"
 
 #sapply(train.X.filt[, ints], n_unique)
 # cast features to numeric where appropriate:
+
 train.X.filt$CNT_CHILDREN <- as.numeric(train.X.filt$CNT_CHILDREN)
 train.X.filt$HOUR_APPR_PROCESS_START <- as.numeric(train.X.filt$HOUR_APPR_PROCESS_START)
 
-# reformat characters to factors:
+# reformat characters and remaining integer columns to factors:
 train.X.filt <- train.X.filt %>% mutate_if(is.character, as.factor)
 train.X.filt <- train.X.filt %>% mutate_if(is.integer, as.factor)
 
@@ -343,8 +337,6 @@ cors <- cor(train.X.filt[, nums])
 corrplot(cors, type = "upper", order = "hclust", 
          tl.col = "black", tl.cex = 0.5, tl.srt = 45)
 
-train.X.filt$OBS_30_CNT_SOCIAL_CIRCLE
-
 ```
 
 Some of the numerics are redundant. List below:
@@ -362,32 +354,13 @@ train.X.filt <- train.X.filt[, !names(train.X.filt) %in% c("CNT_CHILDREN", "OBS_
 ```
 
 
-
-### Now take logs on numeric columns 
-```{r}
-
-class.values <- sapply(train.X.filt, class)
-
-for (i in 1:length(class.values)){
-  obj = class.values[i]
-  cn = names(obj)
-  cv = obj[[1]]
-  # identify numerics and find their log
-  if (cv == "numeric") {
-    new.name <- paste(cn, ".log", sep="")
-    log.vals = log(train.X.filt[, i] + 1)
-    train.X.filt[, new.name] <- log.vals
-  }
-}
-
-```
-
 ### Look at mutual information gain for feature selection:
 
 ```{r}
 #install.packages("infotheo")
 library(infotheo)
 
+train.X.filt <- train.X.filt[, -c(1,2)]
 class.values <- sapply(train.X.filt, class) # update class.values
 facs <- as.vector(class.values == "integer")
 nums <- as.vector(class.values == "numeric")
@@ -499,7 +472,7 @@ table(train.X.filt$ORGANIZATION_TYPE)
 
 
 # build random forest
-train.rf <- randomForest(TARGET ~ ., data=train.X.filt, ntree=100,
+train.rf <- randomForest(TARGET ~ ., data=train.X.filt, ntree=25,
                           keep.forest=TRUE, importance=TRUE)
 
 # try rfcv for feature selection
@@ -508,7 +481,7 @@ importance(train.rf, type=2) # decrease in gini impurity
 importance(train.rf, type=1) # decrease in prediction accuracy
 
 ?varImpPlot
-varImpPlot(train.rf, n.var=50)
+varImpPlot(train.rf, n.var=30)
 
 #notes:
 
@@ -520,14 +493,13 @@ varImpPlot(train.rf, n.var=50)
 ### Check prediction accuracy on the training data:
 ```{r}
 
-train.X.filt.p <- train.X.filt[, -96] # drop target variable
 
+train.X.filt.p <- train.X.filt[, -66] # drop target variable
 y.pred <- predict(train.rf, train.X.filt.p)
-
 ```
 
 
 ```{r}
-
+table(y.pred == y)
 ```
 
