@@ -51,6 +51,76 @@ train.X %>% skim() %>% kable()
 mean(train$TARGET)
 ```
 
+At a high level, the dataset shows several columns that each have a high proportion of missing values, and a target variable that is unbalanced, though not severely. There are also numerous housing stock-related columns (.e.g COMMONAREA_AVG, COMMONAREA_MEDI, COMMONAREA_MODE) that seem to have a high potential for redundancy.  
+
+## Next steps:
+
+1) Check correlations in housing stock features
+2) Drop redundant features
+3) Impute missing numerics
+4) Impute missing categoricals
+
+#### Correlations in housing stock:
+```{r}
+house <- train.X[,c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION_AVG','YEARS_BUILD_AVG','COMMONAREA_AVG','ELEVATORS_AVG','ENTRANCES_AVG','FLOORSMAX_AVG','FLOORSMIN_AVG','LANDAREA_AVG','LIVINGAPARTMENTS_AVG','LIVINGAREA_AVG','NONLIVINGAPARTMENTS_AVG','NONLIVINGAREA_AVG','APARTMENTS_MODE','BASEMENTAREA_MODE','YEARS_BEGINEXPLUATATION_MODE','YEARS_BUILD_MODE','COMMONAREA_MODE','ELEVATORS_MODE','ENTRANCES_MODE','FLOORSMAX_MODE','FLOORSMIN_MODE','LANDAREA_MODE','LIVINGAPARTMENTS_MODE','LIVINGAREA_MODE','NONLIVINGAPARTMENTS_MODE','NONLIVINGAREA_MODE','APARTMENTS_MEDI','BASEMENTAREA_MEDI','YEARS_BEGINEXPLUATATION_MEDI','YEARS_BUILD_MEDI','COMMONAREA_MEDI','ELEVATORS_MEDI','ENTRANCES_MEDI','FLOORSMAX_MEDI','FLOORSMIN_MEDI','LANDAREA_MEDI','LIVINGAPARTMENTS_MEDI','LIVINGAREA_MEDI','NONLIVINGAPARTMENTS_MEDI','NONLIVINGAREA_MEDI','TOTALAREA_MODE')]
+
+
+#install.packages("corrplot")
+library(corrplot)
+
+cors <- cor(house[complete.cases(house), ])
+corrplot(cors, type = "upper", order = "hclust", 
+         tl.col = "black", tl.cex = 0.5, tl.srt = 45)
+
+```
+
+Each set of _Avg, _MEDI, and _MODE housing variables shows close to 100% correlation.  Keep the _MEDI ones to simplify.
+
+#### Drop redundant housing numerics:
+
+```{r}
+drops <- c('APARTMENTS_AVG','BASEMENTAREA_AVG','YEARS_BEGINEXPLUATATION_AVG','YEARS_BUILD_AVG','COMMONAREA_AVG','ELEVATORS_AVG','ENTRANCES_AVG','FLOORSMAX_AVG','FLOORSMIN_AVG','LANDAREA_AVG','LIVINGAPARTMENTS_AVG','LIVINGAREA_AVG','NONLIVINGAPARTMENTS_AVG','NONLIVINGAREA_AVG','APARTMENTS_MODE','BASEMENTAREA_MODE','YEARS_BEGINEXPLUATATION_MODE','YEARS_BUILD_MODE','COMMONAREA_MODE','ELEVATORS_MODE','ENTRANCES_MODE','FLOORSMAX_MODE','FLOORSMIN_MODE','LANDAREA_MODE','LIVINGAPARTMENTS_MODE','LIVINGAREA_MODE','NONLIVINGAPARTMENTS_MODE','NONLIVINGAREA_MODE')
+
+train.X <- train.X[, !names(train.X) %in% drops]
+```
+
+#### Impute Missing Numeric variables:
+
+``` {r}
+# First do some formatting on the remaining data to get integers, factors and numerics where they make sense:
+class.values <- sapply(train.X, class)
+ints <- as.vector(class.values == "integer")
+nums <- as.vector(class.values == "numeric")
+chars <- as.vector(class.values == "character")
+
+
+#convert characters to factors:
+for (i in (1:ncol(train.X)) ) {
+  if (class(train.X[, i]) == "character") {
+    train.X[, i] <- as.factor(train.X[, i])
+  }
+}
+
+# reassign class values:
+class.values <- sapply(train.X, class)
+facs <- chars
+```
+
+
+
+```{r}
+#install.packages("mice")
+library(mice)
+
+#md.pattern(train.X)
+train.X.imputed <- mice(train.X[, nums], m=5, maxit = 50, method = 'pmm', seed = 500)
+
+names(train.X[, nums])
+
+
+```
+
+
 ```{r}
 # separate classes within the dataframe:
 class.values <- sapply(train.X, class)
