@@ -1,0 +1,133 @@
+---
+title: "analysis"
+author: "mwinkler"
+date: "July 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(xgboost)
+knitr::opts_chunk$set(echo = TRUE)
+setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/src')
+```
+
+
+### Load original training data and modified train_test set:
+```{r}
+tr <- read.csv("../data/application_train.csv")
+#test <- read.csv("../data/application_test.csv")
+tr_te <- read.csv("../data/train_test_combined.csv")
+
+```
+
+```{r}
+tri <- 1:nrow(tr)
+tr$TARGET <- as.factor(tr$TARGET)
+y <- tr$TARGET
+
+tr <- tr_te[tri, ]
+te <- tr_te[-tri, ]
+
+
+# downsample main dataset before running xgboost, since it takes a long time otherwise.
+set.seed(1234)
+
+down_tr <- caret::downSample(x = tr[, -1],
+                         y = y)
+
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+
+down_tr <- down_tr[, -856] %>% as.matrix()
+
+```
+`
+
+```{r}
+
+
+tri <- caret::createDataPartition(y_tr, p = 0.9, list = F) %>% c()
+dtrain <- xgb.DMatrix(data = down_tr[tri,], label = y_tr[tri])
+dval <- xgb.DMatrix(data = down_tr[-tri,], label = y_tr[-tri])
+cols <- colnames(down_tr)
+
+rm(down_tr, tr, te, tr_te, tri); gc()
+
+params <- list(objective = "binary:logistic",
+          booster = "gbtree",
+          eval_metric = "auc",
+          nthread = 4,
+          eta = 0.05,
+          max_depth = 6,
+          min_child_weight = 30,
+          gamma = 0,
+          subsample = 0.85,
+          colsample_bytree = 0.7,
+          colsample_bylevel = 0.632,
+          alpha = 0,
+          lambda = 0,
+          nrounds = 500)
+
+set.seed(1234)
+m_xgb <- xgb.train(params, 
+                   dtrain, 
+                   params$nrounds, 
+                   list(val = dval), 
+                   print_every_n = 50, 
+                   early_stopping_rounds = 300)
+
+```
+
+
+#### Inspect most important features:
+```{r}
+
+cols <- colnames(down_tr)
+
+
+# inspect the top features:
+xgb.importance(feature_names=cols, model=m_xgb) %>% 
+  xgb.plot.importance(top_n = 50)
+
+imp <- xgb.importance(cols, model=m_xgb)
+imp
+```
+
+
+Information gain drops off very quickly.
+```{r}
+plot(imp$Gain[1:200], type='l')
+#plot(imp$Cover[1:200], type='l')
+#plot(imp$Frequency[1:200], type='l')
+```
+
+Subselect features based on information gain for further analysis:
+```{r}
+selected <- imp %>% filter(Gain >= .001)
+
+selected.X <- tr_te[, selected$Feature]
+tri <- 1:nrow(tr)
+selected.X <- selected.X[tri,]
+
+
+M <- cor(selected.X)
+#corrplot::corrplot(M, type='lower', method='number')
+#image(M)
+
+#install.packages("qgraph")
+library("qgraph")
+qgraph(M, 
+       minimum=0.01, 
+       cut=0.1, 
+       vsize=2, 
+       layout = 'spring',
+       legend=TRUE, 
+       borders=FALSE)
+?qgraph
+title("Big 5 correlations",line=-2,cex.main=2)
+
+```
