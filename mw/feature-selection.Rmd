@@ -1,0 +1,147 @@
+---
+title: "analysis"
+author: "mwinkler"
+date: "July 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(xgboost)
+knitr::opts_chunk$set(echo = TRUE)
+setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
+```
+
+
+### Load original training data and modified train_test set:
+```{r}
+tr <- read.csv("../data/application_train.csv")
+#test <- read.csv("../data/application_test.csv")
+tr_te <- read.csv("../data/train_test_combined.csv")
+```
+
+```{r}
+tri <- 1:nrow(tr)
+tr$TARGET <- as.factor(tr$TARGET)
+y <- tr$TARGET
+tr <- tr_te[tri, ]
+te <- tr_te[-tri, ]
+
+# downsample main dataset so feature evaluations run more quickly.  
+# This also balances the data 50/50 by values of the target class.
+set.seed(1234)
+down_tr <- caret::downSample(x = tr[, -1],
+                         y = y)
+
+
+
+# convert Class to numeric for Information table calculation.
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+down_tr$Class <- y_tr
+
+#down_tr <- down_tr[, -856] %>% as.matrix()
+
+```
+`
+
+### Feature Selection:
+
+The dataset generated has ~850 variables. With many of these derived from the original features, it's very likely that the feature space can be reduced prior to fitting predictive models. The below uses hierarchical clustering to seed K-means clusters in order to select features from each cluster with the strongest relationship to the target class.
+
+See this link for more information: https://github.com/klarsen1/Information/blob/master/vignettes/Information-vignette.Rmd
+
+
+#### Information Value calculation:
+
+There's an option to use cross validation in the Information library. This omits the validation dataset to find information on the train set only.
+
+```{r}
+#install.packages("Information")
+library(Information)
+
+# this creates the information gain tables for each feature in the dataset in a
+# univariate sense.
+IV <- create_infotables(data=down_tr, y="Class")
+
+#print(IV$Summary)
+#print(IV$Tables$DAYS_CREDIT_median)
+plot_infotables(IV, IV$Summary$Variable[1:6], same_scale=TRUE)
+```
+
+#### Initial Feature Selection:
+
+The results from the greedy feature evaluation provide a starting point for further analysis of the candidate variables. A common rule-of-thumb is to drop variables with an IV less than 0.05. That's close to the point of diminishing returns in the plot above. To be conservative with the feature elimination, we'll set a curoff of 0.04 for further analysis.
+
+
+```{r}
+selected <- IV$Summary$Variable[which(IV$Summary$IV >= 0.04)]
+length(selected)
+```
+
+Now 114 of the original 855 variables are left, so we dropped 87% of the original dataset. There are missing values for the remaining 114 features, so assess the situation for the training data and resolve before going further.
+
+```{r}
+
+
+```
+
+```{r}
+library(ClustOfVar)
+library(reshape2)
+library(plyr)
+
+down_tr.comp <- down_tr[complete.cases(down_tr),]
+
+tree <- hclustvar(down_tr.comp[,!(names(down_tr.comp) %in% c("Class"))])
+
+#plot(tree$height)
+#plot(tree, cex=0.5)
+
+# look at the distribution of tree height
+
+nvars <- length(tree[tree$height<0.10])
+cut.tree <- cutreevar(tree, nvars)
+part_init<-cutreevar(tree, nvars)$cluster
+
+
+# looking at this shows us that some variables are being grouped together based on their high correlations:
+kmeans<-kmeansvar(X.quanti=down_tr.comp[,!(names(down_tr.comp) %in% c("Class"))],init=part_init)
+clusters <- cbind.data.frame(melt(kmeans$cluster), 
+                             row.names(melt(kmeans$cluster)))
+
+names(clusters) <- c("Cluster", "Variable")
+clusters <- join(clusters, IV$Summary, by="Variable", type="left")
+clusters <- clusters[order(clusters$Cluster),]
+
+# rank variables within each cluster by their IV rank:
+clusters$Rank <- stats::ave(-clusters$IV, clusters$Cluster, FUN=rank)
+
+selected_members <- subset(clusters, Rank==1)
+selected_members$Rank <- NULL
+
+nrow(selected_members)
+
+# Using variable clustering in combination with IV further cuts the number of variables from 114 to 70
+print(clusters, row.names=FALSE)
+```
+
+
+### Correlation analysis:
+
+With each feature's predictive power known, we can evaluate their correlations to identify whether any are redundant.
+
+```{r}
+
+corr <- cor(down_tr.comp[, selected_members$Variable], use="complete.obs")
+corrplot::corrplot(corr, 
+                   method="number", 
+                   type="lower", 
+                   number.cex=0.5,
+                   number.digits = 1)
+```
+
+
