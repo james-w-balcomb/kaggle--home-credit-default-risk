@@ -12,6 +12,8 @@ library(knitr)
 library(tidyverse)
 library(magrittr)
 library(reshape)
+library(Information)
+library(data.table)
 knitr::opts_chunk$set(echo = TRUE)
 setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
 ```
@@ -27,6 +29,11 @@ fn <- funs(mean, sd, min, max, sum, n_distinct, .args = list(na.rm = TRUE))
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 tr <- read_csv('../data/application_train.csv')
 ```
+
+
+
+
+### Balance data analysis:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 #require(data.table)
@@ -81,7 +88,6 @@ grouped <- result_bureau %>%
 
 sel <- names(grouped)[!(names(grouped) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE", "CREDIT_ACTIVE"))]
 
-library(data.table) # v1.9.5+
 grouped <- dcast(setDT(grouped), 
                    CREDIT_TYPE + SK_ID_CURR ~ CREDIT_ACTIVE, 
                    value.var = sel)
@@ -101,11 +107,9 @@ tr <- tr %>%
   left_join(result_bureau, by = "SK_ID_CURR")
 ```
 
-#### Information from variables calculated so far:
+#### Information value from balance data:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-
-library(Information)
 
 y <- as.factor(tr$TARGET)
 set.seed(1234)
@@ -123,44 +127,172 @@ tr <- tr[, keep]
 ```
 
 
+### Credit card history data:
+
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 cc_balance <- read_csv("../data/credit_card_balance.csv")
-sum_cc_balance <- cc_balance %>%  
-  select(-SK_ID_PREV) %>% 
+
+# Collapse extra levels on the contract status:
+ind <- !(cc_balance$NAME_CONTRACT_STATUS %in% c("Active", "Completed", "Signed"))
+cc_balance[ind, c("NAME_CONTRACT_STATUS")] <- "Other"
+
+# most recent data:
+cc_last_month <- cc_balance[cc_balance$MONTHS_BALANCE == -1, ] %>%
+  select(-SK_ID_PREV) %>%
   mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
-  group_by(SK_ID_CURR) %>% 
+  group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>% 
+  summarise_all(sum)
+
+sel <- names(cc_last_month)[!(names(cc_last_month) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS"))]
+
+cc_last_month <- dcast(setDT(cc_last_month), 
+                   SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
+                   value.var = sel)
+
+# totals:
+cc_contract <- cc_balance %>%
+  select(-SK_ID_PREV) %>%
+  mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
+  group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>% 
   summarise_all(fn)
-rm(cc_balance); gc()
+
+sel <- names(cc_contract)[!(names(cc_contract) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS"))]
+
+cc_contract <- dcast(setDT(cc_contract), 
+                   SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
+                   value.var = sel)
+
+tr <- tr %>%
+  left_join(cc_last_month, by = "SK_ID_CURR") %>%
+  left_join(cc_contract, by = "SK_ID_CURR")
+
+rm(cc_balance, cc_contract, cc_last_month); gc()
+
 ```
+
+### Test Information gained from cc data:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+y <- as.factor(tr$TARGET)
+set.seed(1234)
+down_tr <- caret::downSample(x = tr,y = y)
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+down_tr$Class <- y_tr
+
+IV <- create_infotables(data=down_tr, y="Class")
+plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
+
+keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
+tr <- tr[, keep]
+```
+
+
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 
 payments <- read_csv("../data/installments_payments.csv") 
 
-sum_payments <- payments %>% 
-  select(-SK_ID_PREV) %>% 
+cc_payments <- payments[payments$NUM_INSTALMENT_VERSION == 1, ] %>%
+  select(-SK_ID_PREV) %>%
   mutate(PAYMENT_PERC = AMT_PAYMENT / AMT_INSTALMENT,
          PAYMENT_DIFF = AMT_INSTALMENT - AMT_PAYMENT,
          DPD = DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT,
          DBD = DAYS_INSTALMENT - DAYS_ENTRY_PAYMENT,
          DPD = ifelse(DPD > 0, DPD, 0),
-         DBD = ifelse(DBD > 0, DBD, 0)) %>% 
-  group_by(SK_ID_CURR) %>% 
-  summarise_all(fn) 
-rm(payments); gc()
+         DBD = ifelse(DBD > 0, DBD, 0)) %>%
+  group_by(SK_ID_CURR) %>%
+  summarise_all(fn)
+
+var.names <- names(cc_payments)[!names(cc_payments) %in% "SK_ID_CURR"]
+
+for (i in 2:length(var.names)) {
+  nm = var.names[i]
+  nm_mod = paste(nm, "_cc", sep="")
+  var.names[i] <- nm_mod
+}
+var.names <- c("SK_ID_CURR", var.names)
+names(cc_payments) <- var.names
+
+totals <- payments %>%
+  select(-SK_ID_PREV) %>%
+  mutate(PAYMENT_PERC = AMT_PAYMENT / AMT_INSTALMENT,
+         PAYMENT_DIFF = AMT_INSTALMENT - AMT_PAYMENT,
+         DPD = DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT,
+         DBD = DAYS_INSTALMENT - DAYS_ENTRY_PAYMENT,
+         DPD = ifelse(DPD > 0, DPD, 0),
+         DBD = ifelse(DBD > 0, DBD, 0)) %>%
+  group_by(SK_ID_CURR) %>%
+  summarise_all(fn)
+
+var.names <- names(totals)[!names(totals) %in% "SK_ID_CURR"]
+
+for (i in 2:length(var.names)) {
+  nm = var.names[i]
+  nm_mod = paste(nm, "_total", sep="")
+  var.names[i] <- nm_mod
+}
+var.names <- c("SK_ID_CURR", var.names)
+names(totals) <- var.names
+
+tr <- tr[, 1:121]
+
+tr <- tr %>%
+  left_join(cc_payments, by = "SK_ID_CURR") %>%
+  left_join(totals, by = "SK_ID_CURR")
 ```
+
+
+### Test new information from installment payments data:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+y <- as.factor(tr$TARGET)
+set.seed(1234)
+down_tr <- caret::downSample(x = tr,y = y)
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+down_tr$Class <- y_tr
+
+IV <- create_infotables(data=down_tr, y="Class")
+plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
+
+keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
+tr <- tr[, keep]
+
+rm(payments, totals, cc_payments); gc();
+
+```
+
 
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 pc_balance <- read_csv("../data/POS_CASH_balance.csv")
+# only pull the most recent month
+pc_balance <- pc_balance[pc_balance$MONTHS_BALANCE == -1, ]
 
-sum_pc_balance <- pc_balance %>% 
+n_distinct(pc_balance$SK_ID_CURR)
+
+pc_balance <- pc_balance %>% 
   select(-SK_ID_PREV) %>% 
   mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
-  group_by(SK_ID_CURR) %>% 
+  group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>% 
   summarise_all(fn)
 
-rm(pc_balance); gc()
+
+sel <- names(pc_balance)[!names(pc_balance) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS")]
+
+pc_balance <- dcast(setDT(pc_balance), 
+                   SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
+                   value.var = sel)
+
+
+tr <- tr[, 1:121]
+tr <- tr %>%
+  left_join(pc_balance, by = "SK_ID_CURR") %>%
+
 ```
 
 
