@@ -17,19 +17,18 @@ setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
 ```
 
 
-#### Workhorse summary function:
+### Summary function:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-fn <- funs(median, mean, sd, min, max, sum, n_distinct, .args = list(na.rm = TRUE))
+fn <- funs(mean, sd, min, max, sum, n_distinct, .args = list(na.rm = TRUE))
 ```
 
-### Training data for F-E evaluation:
+### Training data:
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 tr <- read_csv('../data/application_train.csv')
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-
 #require(data.table)
 bbalance <- read_csv("../data/bureau_balance.csv")
 bbalance.cur <- bbalance[bbalance$MONTHS_BALANCE == -1, ]
@@ -72,22 +71,55 @@ result_bureau <- bureau %>%
   #group_by(SK_ID_CURR, CREDIT_ACTIVE, CREDIT_TYPE, CREDIT_CURRENCY) #%>%
 #  summarise_all(funs(sum,))
 
-# separate groups of columns by the data and associated aggregation levels. Then merge back to SK_ID_CURRENT
+totals <- result_bureau %>%
+  group_by(SK_ID_CURR) %>%
+  summarize_all(fn)
 
-# overall level for SK_ID_CURRENT
-# grouped by CREDIT_TYPE and CREDIT_ACTIVE
+grouped <- result_bureau %>%
+  group_by(SK_ID_CURR, CREDIT_TYPE, CREDIT_ACTIVE) %>%
+  summarise_all(sum)
 
+sel <- names(grouped)[!(names(grouped) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE", "CREDIT_ACTIVE"))]
 
+library(data.table) # v1.9.5+
+grouped <- dcast(setDT(grouped), 
+                   CREDIT_TYPE + SK_ID_CURR ~ CREDIT_ACTIVE, 
+                   value.var = sel)
 
+sel <- names(grouped)[!(names(grouped) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE"))]
 
-names(result_bureau)
+grouped <- dcast(setDT(grouped), 
+                   SK_ID_CURR ~ CREDIT_TYPE, 
+                   value.var = sel)
 
-# %>% 
-#   select(-SK_ID_BUREAU) %>% 
-#   mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
-#   group_by(SK_ID_CURR) %>% 
-#   summarise_all(fn)
-#rm(bureau, sum_bbalance); gc()
+result_bureau <- totals %>%
+  left_join(grouped, by = "SK_ID_CURR")
+
+rm(bureau, result_bbalance, grouped, totals); gc()
+
+tr <- tr %>%
+  left_join(result_bureau, by = "SK_ID_CURR")
+```
+
+#### Information from variables calculated so far:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+library(Information)
+
+y <- as.factor(tr$TARGET)
+set.seed(1234)
+down_tr <- caret::downSample(x = tr,y = y)
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+down_tr$Class <- y_tr
+
+IV <- create_infotables(data=down_tr, y="Class")
+plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
+
+keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
+tr <- tr[, keep]
 ```
 
 

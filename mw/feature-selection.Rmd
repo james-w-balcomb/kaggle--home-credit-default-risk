@@ -7,9 +7,9 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(knitr)
-library(tidyverse)
-library(magrittr)
-library(xgboost)
+#library(tidyverse)
+#library(magrittr)
+#library(xgboost)
 knitr::opts_chunk$set(echo = TRUE)
 setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
 ```
@@ -36,7 +36,6 @@ down_tr <- caret::downSample(x = tr[, -1],
                          y = y)
 
 
-
 # convert Class to numeric for Information table calculation.
 y_tr <- as.numeric(down_tr$Class)
 y_tr[y_tr == 1] <- 0
@@ -44,16 +43,13 @@ y_tr[y_tr == 2] <- 1
 down_tr$Class <- y_tr
 
 #down_tr <- down_tr[, -856] %>% as.matrix()
-
 ```
-`
 
 ### Feature Selection:
 
 The dataset generated has ~850 variables. With many of these derived from the original features, it's very likely that the feature space can be reduced prior to fitting predictive models. The below uses hierarchical clustering to seed K-means clusters in order to select features from each cluster with the strongest relationship to the target class.
 
 See this link for more information: https://github.com/klarsen1/Information/blob/master/vignettes/Information-vignette.Rmd
-
 
 #### Information Value calculation:
 
@@ -85,7 +81,42 @@ length(selected)
 Now 114 of the original 855 variables are left, so we dropped 87% of the original dataset. There are missing values for the remaining 114 features, so assess the situation for the training data and resolve before going further.
 
 ```{r}
+tr.sel <- tr[, selected]
+#write.csv(tr.sel, 'selected_train_data.csv')
+#rm(down_tr, IV, te, tr, tr_te); gc()
+library(missForest)
 
+?missForest
+
+tr.imp <- missForest(tr.sel, 
+                     maxiter = 5,
+                     ntree = 30,
+                     variablewise = TRUE,
+                     nodesize = c(1000, 5000),
+                     parallelize = 'forests')
+head(tr.imp$ximp)
+write.csv(tr.imp$ximp, '../data/train_imputed.csv')
+
+hist(tr.sel$DAYS_INSTALMENT_sd)
+hist(tr.imp$ximp$DAYS_INSTALMENT_sd)
+
+colMeans()
+
+result <- data.frame(cbind(names(tr.sel),
+      colMeans(tr.sel, na.rm = TRUE),
+      as.numeric(tr.imp$OOBerror)))
+ss
+
+
+result <- result[, 2:3]
+names(result) <- c("avg", "imputation_error")
+
+result$avg <- as.numeric(result$avg)
+result$imputation_error <- as.numeric(result$imputation_error)
+
+result$error_perc <- result$imputation_error / result$avg
+
+result
 
 ```
 
