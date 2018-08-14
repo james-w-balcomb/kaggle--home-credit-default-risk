@@ -1,0 +1,171 @@
+---
+title: "build-model"
+author: "mwinkler"
+date: "August 13, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xgboost)
+library(tidyverse)
+```
+
+### Load datasets:
+
+```{r}
+tro <- read.csv('../data/application_train.csv')
+tr_te <- read.csv('../data/train_test_combined.csv', row.names=1)
+tr.imp <- read.csv('../data/train_imputed.csv', row.names = 1)
+
+tri <- 1:nrow(tro)
+tr <- tr_te[tri, ]
+te <- tr_te[-tri, ]
+
+rm(tr_te); gc()
+
+tr.imp$TARGET <- as.factor(tro$TARGET)
+tr$TARGET <- as.factor(tro$TARGET)
+```
+
+### Model Testing functions:
+
+```{r}
+
+params <- list(objective = "binary:logistic",
+          booster = "gbtree",
+          eval_metric = "auc",
+          nthread = 4,
+          eta = 0.05,
+          max_depth = 6,
+          min_child_weight = 30,
+          gamma = 0,
+          subsample = 0.85,
+          colsample_bytree = 0.7,
+          colsample_bylevel = 0.632,
+          alpha = 0,
+          lambda = 0,
+          nrounds = 100)
+
+down.sample <- function(dataset) {
+  Y = dataset$TARGET
+  X = subset(dataset, select=-c(TARGET))
+  data.down <- caret::downSample(x = X, y = Y)
+  data.down
+}
+
+make.cv <- function(dataset) {
+  
+  y = as.numeric(dataset$Class)
+  y[y == 1] = 0
+  y[y == 2] = 1
+  dataset$Class = y
+  
+  dataset = subset(dataset, select = -c(Class))
+  dataset = dataset %>% as.matrix()
+  
+  M <- xgb.DMatrix(dataset, label = y)
+  cv <- xgb.cv(params = params,
+               data = M, 
+               nrounds = params$nrounds,
+               nfold = 10,
+               print_every_n = 25,
+               early_stopping_rounds = 50
+               )
+  cv
+}
+
+```
+
+### Cross-validation testing:
+
+```{r}
+# imputed data with best columns:
+down.tr <- down.sample(tr.imp)
+cv <- make.cv(down.tr)
+
+# original data with best columns:
+tr.samp <- tr[, names(tr.imp)]
+down.tr.samp <- down.sample(tr.samp)
+down.tr.cv <- make.cv(down.tr.samp)
+
+# original data with all columns:
+tr$housing_info <- housing$na_count
+tr.down <- down.sample(tr)
+cv.down <- make.cv(tr.down)
+
+```
+
+From testing, it looks like the best path for XGBoost on this dataset is to engineer many features and throw them at the model. Look at feature importances. Take the most promising features and focus future efforts there to construct additional features.
+
+
+```{r}
+
+tr.down <- subset(tr.down, select=-c(X))
+y = as.numeric(tr.down$Class)
+y[y == 1] = 0
+y[y == 2] = 1
+tr.down <- subset(tr.down, select=-c(Class))
+tr.down <- tr.down %>% as.matrix()
+
+#tri <- caret::createDataPartition(y, p = 0.9, list = F) %>% c()
+
+dtrain <- xgb.DMatrix(data = tr.down, label = y_train)
+dval <- xgb.DMatrix(data = tr.down[-tri,], label = y[-tri])
+#cols <- colnames(down_tr)
+
+params <- list(objective = "binary:logistic",
+          booster = "gbtree",
+          eval_metric = "auc",
+          nthread = 4,
+          eta = 0.05,
+          max_depth = 6,
+          min_child_weight = 30,
+          gamma = 0,
+          subsample = 0.85,
+          colsample_bytree = 0.7,
+          colsample_bylevel = 0.632,
+          alpha = 0,
+          lambda = 0,
+          nrounds = 500)
+
+set.seed(1234)
+m_xgb <- xgb.train(params, 
+                   dtrain, 
+                   params$nrounds, 
+                   list(val = dval), 
+                   print_every_n = 50, 
+                   early_stopping_rounds = 50)
+
+xgb.importance(feature_names=cols, model=m_xgb) %>% 
+  xgb.plot.importance(top_n = 50)
+
+```
+
+
+### Additional feature engineering
+
+```{r}
+
+# housing details:
+housing <- tr[, 44:91]
+na_count <- apply(housing, 1, function(x) sum(is.na(x)))
+housing$TARGET <- as.numeric(tr$TARGET)
+
+na_count[which(na_count > 0 & na_count < 45)] <- 1
+na_count[na_count >= 45] <- 2
+housing$na_count <- na_count
+tapply(housing$TARGET, housing$na_count, mean)
+
+# document flags:
+names(tr)[0:150]
+flags <- tr[, ]
+flag.na <- apply(flags, 1, function(x) sum(is.na(x)))
+hist(flags.na)
+#flags$TARGET <- as.numeric(tr$TARGET)
+
+
+
+
+
+```

@@ -7,21 +7,20 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(knitr)
-library(tidyverse)
-library(magrittr)
-library(xgboost)
+library(ggplot2)
 knitr::opts_chunk$set(echo = TRUE)
-setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/src')
+setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
 ```
 
 
 ### Load original training data and modified train_test set:
 ```{r}
 tr <- read.csv("../data/application_train.csv")
-#test <- read.csv("../data/application_test.csv")
 tr_te <- read.csv("../data/train_test_combined.csv")
 
 ```
+
+### Split training and test datasets:
 
 ```{r}
 tri <- 1:nrow(tr)
@@ -31,10 +30,124 @@ y <- tr$TARGET
 tr <- tr_te[tri, ]
 te <- tr_te[-tri, ]
 
+rm(tr_te)
+```
+
+### Check for missing values:
+
+```{r}
+my.fun <- function(vec) {
+  na.ind = is.na(vec)
+  ct = length(vec)
+  na.tot = sum(na.ind)
+  na.tot / ct
+}
+
+missing <- sapply(tr, my.fun)
+
+qplot(missing,
+      geom="histogram",
+      bins = 30,  
+      main = "Distribution of missing value %s", 
+      xlab = "% Missing",
+      ylab = "Num Variables",
+      fill=I("blue"), 
+      col=I("red"), 
+      alpha=I(.2))
+```
+
+We know there are issues with missing values in the data. Evaluate which features are good predictors of the target before fililng in their missing values. The below uses the Information Value calculated in the Information package. By default, Information Value calculates scores for bins of each feature, including a NULL group. Sometimes, a NULL group may itself be informative for prediction. However, it may also be the case that 
+
+```{r}
+library(Information)
+tr$TARGET <- as.numeric(y)
+tr$TARGET[y == 1] <- 0
+tr$TARGET[y == 2] <- 1
+
+results <- data.frame(names(tr[, 3:856]))
+names(results) <- "variable"
+row.names(results) <- results$variable
+results$IV <- as.numeric(0.00)
+
+# find information value scores for non-null instances by variable
+for (v in names(tr[, 3:856])) {
+  new.data <- tr[, c(v, "TARGET")]
+  new.data <- new.data[complete.cases(new.data),]
+  
+  # some variables have only 1 unique value: 
+  iv <- try(create_infotables(data = new.data, y = "TARGET"), 0.00)
+  
+  if (class(iv) != "Information") {
+    results[v, ]$IV <- 0.00
+  } else {
+  
+  iv <- iv$Summary$IV
+  results[v,]$IV <- iv
+  }
+}
+
+qplot(results$IV,
+      geom="histogram",
+      bins = 30,  
+      main = "Distribution Information Values", 
+      xlab = "IV Score (Non-Null)",
+      ylab = "Count",
+      fill=I("blue"), 
+      col=I("red"), 
+      alpha=I(.2))
+
+```
+
+### Examine combination of NULLs and Variable importances:
+
+```{r}
+missing <- data.frame(missing)
+missing$variable <- row.names(missing)
+
+results <- left_join(results,
+            missing,
+            by = 'variable')
+
+ggplot(results, aes(x=IV, y=missing)) +
+  geom_point() +
+  geom_rug()
+
+```
+
+Some of the more important variables (X axis) are also missing the most data. Not ideal!
+
+### Select strong predictors:
+
+Before doing the work to fill in missing values in the data 
+
+```{r}
+selected <- results[which(results$IV >= .05),]
+tr.selected <- tr[, selected$variable]
+tr.selected <- tr.selected[, 3:163]
+ncol(tr.selected)
+```
+
+
+
+
+
+```{r}
+
+
+tr.imputed <- missForest(tr.selected, mtry=5, ntree=10)
+tr.imputed$OOBerror
+
+#tr.complete <- complete(tr.imputed, 2)
+
+```
+
+
+
 
 # downsample main dataset before running xgboost, since it takes a long time otherwise.
 set.seed(1234)
 
+```{r}
 down_tr <- caret::downSample(x = tr[, -1],
                          y = y)
 
@@ -112,22 +225,4 @@ selected <- imp %>% filter(Gain >= .001)
 selected.X <- tr_te[, selected$Feature]
 tri <- 1:nrow(tr)
 selected.X <- selected.X[tri,]
-
-
-M <- cor(selected.X)
-#corrplot::corrplot(M, type='lower', method='number')
-#image(M)
-
-#install.packages("qgraph")
-library("qgraph")
-qgraph(M, 
-       minimum=0.01, 
-       cut=0.1, 
-       vsize=2, 
-       layout = 'spring',
-       legend=TRUE, 
-       borders=FALSE)
-?qgraph
-title("Big 5 correlations",line=-2,cex.main=2)
-
 ```
