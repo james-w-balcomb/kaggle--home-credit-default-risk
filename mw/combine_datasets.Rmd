@@ -291,8 +291,29 @@ pc_balance <- dcast(setDT(pc_balance),
 
 tr <- tr[, 1:121]
 tr <- tr %>%
-  left_join(pc_balance, by = "SK_ID_CURR") %>%
+  left_join(pc_balance, by = "SK_ID_CURR")
 
+```
+
+
+### Test information from new pc_balance variables:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+y <- as.factor(tr$TARGET)
+set.seed(1234)
+down_tr <- caret::downSample(x = tr,y = y)
+y_tr <- as.numeric(down_tr$Class)
+y_tr[y_tr == 1] <- 0
+y_tr[y_tr == 2] <- 1
+down_tr$Class <- y_tr
+
+IV <- create_infotables(data=down_tr, y="Class")
+plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
+
+keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
+tr <- tr[, keep]
+
+rm(payments, totals, cc_payments); gc();
 ```
 
 
