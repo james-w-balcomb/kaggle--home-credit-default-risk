@@ -87,7 +87,6 @@ tr.sel <- tr[, selected]
 library(missForest)
 
 ?missForest
-
 tr.imp <- missForest(tr.sel, 
                      maxiter = 5,
                      ntree = 30,

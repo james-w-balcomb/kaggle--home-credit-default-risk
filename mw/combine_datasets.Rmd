@@ -15,6 +15,7 @@ library(reshape)
 library(Information)
 library(data.table)
 knitr::opts_chunk$set(echo = TRUE)
+set.seed(1234)
 setwd('/Users/matt.winkler/Documents/repos/kaggle--home-credit-default-risk/mw')
 ```
 
@@ -30,100 +31,179 @@ fn <- funs(mean, sd, min, max, sum, n_distinct, .args = list(na.rm = TRUE))
 tr <- read_csv('../data/application_train.csv')
 ```
 
+### Function to rename columns:
+```{r message=FALSE, warning=FALSE, include=FALSE}
+change_names <- function(data, excl, slug) {
+  copy = data
+  var.names = names(copy)[!names(copy) %in% excl]
 
+  for (i in 1:length(var.names)) {
+  nm = var.names[i]
+  nm_mod = paste(nm, slug, sep="")
+  var.names[i] = nm_mod
+}
+var.names <- c(excl, var.names)
+names(copy) <- var.names
+
+copy
+
+}
+```
+
+### Function to remove columns that are all NA from dataframe:
+```{r message=FALSE, warning=FALSE, include=FALSE}
+rm.na.col <- function(dataset) {
+  dataset = data.frame(dataset)
+  na_count.list = sapply(dataset, function(y) sum(length(which(is.na(y)))))
+  na_count.df = data.frame(na_count.list)
+  names(na_count.df) = "na_count"
+  dataset = dataset[, !na_count.df$na_count == nrow(dataset)]
+  dataset
+}
+```
+
+
+### Function to calculate information value:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+calc.iv <- function(dataset) {
+  y = as.factor(dataset$TARGET)
+  down_data = caret::downSample(x = dataset, y = y)
+  down_data = rm.na.col(down_data)
+  y_tr = as.numeric(down_data$Class)
+  y_tr[y_tr == 1] = 0
+  y_tr[y_tr == 2] = 1
+  down_data$Class = y_tr
+  IV <- create_infotables(data=down_data, y="Class")
+  
+  IV
+}
+```
 
 
 ### Balance data analysis:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-#require(data.table)
+
 bbalance <- read_csv("../data/bureau_balance.csv")
-bbalance.cur <- bbalance[bbalance$MONTHS_BALANCE == -1, ]
+bbalance_cur <- bbalance[bbalance$MONTHS_BALANCE == -1, ]
+bbalance_cur <- bbalance_cur[, c(1,3)]
 
-# set up results with unique bbalance IDs:
-result_bbalance <- data.frame(unique(bbalance$SK_ID_BUREAU))
-names(result_bbalance) <- "SK_ID_BUREAU"
-# join current balance data:
-result_bbalance <- result_bbalance %>% left_join(bbalance.cur[, c(1,3)], by="SK_ID_BUREAU")
-names(result_bbalance) <- c("SK_ID_BUREAU", "CURRENT_STATUS")
-
-status.counts <- bbalance %>%
+bbalance <- bbalance %>%
   group_by(SK_ID_BUREAU, STATUS) %>%
   tally()
 
-status.counts <- cast(status.counts, SK_ID_BUREAU ~ STATUS)
-status.counts[is.na(status.counts)] <- 0
-status.counts$status_n <- rowSums(status.counts[, 2:9])
+bbalance <- cast(bbalance, SK_ID_BUREAU ~ STATUS)
+bbalance[is.na(bbalance)] <- 0
+bbalance$status_n <- rowSums(bbalance[, 2:9])
 
-# status.names <- c("0", "1", "2", "3", "4", "5", "C", "X")
-# for (nm in status.names) {
-#   nm_norm <- paste(nm, "_norm", sep = "")
-#   status.counts[, nm_norm] <- status.counts[, nm] / status.counts$status_n
-# }
+bbalance_cur <- bbalance_cur %>%
+  group_by(SK_ID_BUREAU, STATUS) %>%
+  tally()
 
-result_bbalance <- result_bbalance %>%
-  left_join(status.counts, by = "SK_ID_BUREAU")
+bbalance_cur <- cast(bbalance_cur, SK_ID_BUREAU ~ STATUS)
+bbalance_cur[is.na(bbalance_cur)] <- 0
+bbalance_cur$status_n <- rowSums(bbalance_cur[, 2:9])
 
-rm(result, status.counts, bbalance, bbalance.cur); gc()
+bbalance_cur <- change_names(bbalance_cur, 
+                             "SK_ID_BUREAU",
+                             "_curr")
+
+result_bbalance <- bbalance %>%
+  left_join(bbalance_cur, by = "SK_ID_BUREAU")
+result_bbalance[is.na(result_bbalance)] <- 0
+
+rm(bbalance, bbalance_cur); gc()
 ```
 
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 bureau <- read_csv("../data/bureau.csv")
 
-result_bureau <- bureau %>% 
+# reduce cardinatlity in CREDIT_TYPE column:
+business <- c("Loan for business development",
+              "Loan for purchase of shares (margin lending)",
+              "Loan for the purchase of equipment",
+              "Loan for working capital replenishment")
+
+real_estate <- c("Mortgage", "Real estate loan")
+
+other <- c("Another type of loan", 
+           "Cash loan (non-earmarked)",
+           "Interbank credit",
+           "Mobile operator loan",
+           "Unknown type of loan")
+
+bureau[bureau$CREDIT_TYPE %in% business, "CREDIT_TYPE"] <- "business"
+bureau[bureau$CREDIT_TYPE %in% real_estate, "CREDIT_TYPE"] <- "real_estate"
+bureau[bureau$CREDIT_TYPE %in% other, "CREDIT_TYPE"] <- "other"
+
+bureau <- bureau %>% 
   left_join(result_bbalance, by = "SK_ID_BUREAU") %>%
   select(-SK_ID_BUREAU) %>%
   mutate_if(is.character, funs(factor(.) %>% as.integer)) #%>%
   #group_by(SK_ID_CURR, CREDIT_ACTIVE, CREDIT_TYPE, CREDIT_CURRENCY) #%>%
 #  summarise_all(funs(sum,))
 
-totals <- result_bureau %>%
+rm(result_bbalance); gc()
+
+totals <- bureau %>%
   group_by(SK_ID_CURR) %>%
   summarize_all(fn)
 
-grouped <- result_bureau %>%
+totals <- change_names(totals, 
+                       excl = "SK_ID_CURR",
+                       slug = "_bur_t")
+
+tr <- tr %>%
+  left_join(totals, by = "SK_ID_CURR")
+
+iv_bureau_totals <- calc.iv(tr)
+iv_bureau_totals <- data.frame(iv_bureau_totals$Summary)
+ind <- !(iv_bureau_totals$Variable %in% names(tr))
+var.names <- iv_bureau_totals$Variable
+iv_bureau_totals[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+
+keep.list <- iv_bureau_totals$Variable[(iv_bureau_totals$IV >= .01)]
+keep.list <- c("SK_ID_CURR", "TARGET", keep.list)
+keep <-  tr[, (names(tr) %in% keep.list)]
+tr <- tr[,1:2]
+rm(totals); gc()
+
+credit_type_active <- bureau %>%
   group_by(SK_ID_CURR, CREDIT_TYPE, CREDIT_ACTIVE) %>%
   summarise_all(sum)
 
-sel <- names(grouped)[!(names(grouped) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE", "CREDIT_ACTIVE"))]
+sel <- names(credit_type_active)[!(names(credit_type_active) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE", "CREDIT_ACTIVE"))]
 
-grouped <- dcast(setDT(grouped), 
+credit_type_active <- dcast(setDT(credit_type_active), 
                    CREDIT_TYPE + SK_ID_CURR ~ CREDIT_ACTIVE, 
                    value.var = sel)
 
-sel <- names(grouped)[!(names(grouped) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE"))]
+sel <- names(credit_type_active)[!(names(credit_type_active) %in% c("SK_ID_CURR", "CREDIT_CURRENCY", "CREDIT_TYPE"))]
 
-grouped <- dcast(setDT(grouped), 
+credit_type_active <- dcast(setDT(credit_type_active), 
                    SK_ID_CURR ~ CREDIT_TYPE, 
                    value.var = sel)
 
-result_bureau <- totals %>%
-  left_join(grouped, by = "SK_ID_CURR")
-
-rm(bureau, result_bbalance, grouped, totals); gc()
-
 tr <- tr %>%
-  left_join(result_bureau, by = "SK_ID_CURR")
-```
+  left_join(credit_type_active, by = "SK_ID_CURR")
 
-#### Information value from balance data:
+rm(credit_type_active, bureau); gc()
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
+iv_credit_type_active <- calc.iv(tr)
+iv_credit_type_active <- data.frame(iv_credit_type_active$Summary)
+ind <- !(iv_credit_type_active$Variable %in% names(tr))
+var.names <- iv_credit_type_active$Variable
+iv_credit_type_active[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_credit_type_active$Variable[(iv_credit_type_active$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
 
-y <- as.factor(tr$TARGET)
-set.seed(1234)
-down_tr <- caret::downSample(x = tr,y = y)
-y_tr <- as.numeric(down_tr$Class)
-y_tr[y_tr == 1] <- 0
-y_tr[y_tr == 2] <- 1
-down_tr$Class <- y_tr
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
 
-IV <- create_infotables(data=down_tr, y="Class")
-plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
+tr <- tr[,1:2]
 
-keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
-tr <- tr[, keep]
 ```
 
 
@@ -149,6 +229,10 @@ cc_last_month <- dcast(setDT(cc_last_month),
                    SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
                    value.var = sel)
 
+cc_last_month <- change_names(cc_last_month, 
+                              excl = "SK_ID_CURR", 
+                              slug = "_cc_lm")
+
 # totals:
 cc_contract <- cc_balance %>%
   select(-SK_ID_PREV) %>%
@@ -162,33 +246,29 @@ cc_contract <- dcast(setDT(cc_contract),
                    SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
                    value.var = sel)
 
+cc_contract <- change_names(cc_contract, 
+                            excl = "SK_ID_CURR",
+                            slug = "_cc_tot")
+
 tr <- tr %>%
   left_join(cc_last_month, by = "SK_ID_CURR") %>%
   left_join(cc_contract, by = "SK_ID_CURR")
 
 rm(cc_balance, cc_contract, cc_last_month); gc()
 
+iv_cc <- calc.iv(tr)
+iv_cc <- data.frame(iv_cc$Summary)
+ind <- !(iv_cc$Variable %in% names(tr))
+var.names <- iv_cc$Variable
+iv_cc[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_cc$Variable[(iv_cc$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
 ```
-
-### Test Information gained from cc data:
-
-```{r message=FALSE, warning=FALSE, include=FALSE}
-
-y <- as.factor(tr$TARGET)
-set.seed(1234)
-down_tr <- caret::downSample(x = tr,y = y)
-y_tr <- as.numeric(down_tr$Class)
-y_tr[y_tr == 1] <- 0
-y_tr[y_tr == 2] <- 1
-down_tr$Class <- y_tr
-
-IV <- create_infotables(data=down_tr, y="Class")
-plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
-
-keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
-tr <- tr[, keep]
-```
-
 
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -206,15 +286,27 @@ cc_payments <- payments[payments$NUM_INSTALMENT_VERSION == 1, ] %>%
   group_by(SK_ID_CURR) %>%
   summarise_all(fn)
 
-var.names <- names(cc_payments)[!names(cc_payments) %in% "SK_ID_CURR"]
+cc_payments <- change_names(cc_payments, 
+                            excl = "SK_ID_CURR",
+                            slug = "_cc_pmt_v1")
 
-for (i in 2:length(var.names)) {
-  nm = var.names[i]
-  nm_mod = paste(nm, "_cc", sep="")
-  var.names[i] <- nm_mod
-}
-var.names <- c("SK_ID_CURR", var.names)
-names(cc_payments) <- var.names
+tr <- tr %>%
+  left_join(cc_payments, by = "SK_ID_CURR") 
+
+rm(cc_payments); gc()
+
+iv_cc_pmt_v1 <- calc.iv(tr)
+iv_cc_pmt_v1 <- data.frame(iv_cc_pmt_v1$Summary)
+ind <- !(iv_cc_pmt_v1$Variable %in% names(tr))
+var.names <- iv_cc_pmt_v1$Variable
+iv_cc_pmt_v1[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_cc_pmt_v1$Variable[(iv_cc_pmt_v1$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
 
 totals <- payments %>%
   select(-SK_ID_PREV) %>%
@@ -227,53 +319,69 @@ totals <- payments %>%
   group_by(SK_ID_CURR) %>%
   summarise_all(fn)
 
-var.names <- names(totals)[!names(totals) %in% "SK_ID_CURR"]
-
-for (i in 2:length(var.names)) {
-  nm = var.names[i]
-  nm_mod = paste(nm, "_total", sep="")
-  var.names[i] <- nm_mod
-}
-var.names <- c("SK_ID_CURR", var.names)
-names(totals) <- var.names
-
-tr <- tr[, 1:121]
+totals <- change_names(totals, 
+                       excl = "SK_ID_CURR",
+                       slug = "_pmt_tot")
 
 tr <- tr %>%
-  left_join(cc_payments, by = "SK_ID_CURR") %>%
   left_join(totals, by = "SK_ID_CURR")
+
+rm(payments, totals); gc();
+
+iv_pmt_tot <- calc.iv(tr)
+iv_pmt_tot <- data.frame(iv_pmt_tot$Summary)
+ind <- !(iv_pmt_tot$Variable %in% names(tr))
+var.names <- iv_pmt_tot$Variable
+iv_pmt_tot[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_pmt_tot$Variable[(iv_pmt_tot$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
 ```
 
 
-### Test new information from installment payments data:
-
-```{r message=FALSE, warning=FALSE, include=FALSE}
-y <- as.factor(tr$TARGET)
-set.seed(1234)
-down_tr <- caret::downSample(x = tr,y = y)
-y_tr <- as.numeric(down_tr$Class)
-y_tr[y_tr == 1] <- 0
-y_tr[y_tr == 2] <- 1
-down_tr$Class <- y_tr
-
-IV <- create_infotables(data=down_tr, y="Class")
-plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
-
-keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
-tr <- tr[, keep]
-
-rm(payments, totals, cc_payments); gc();
-
-```
-
-
+### POS CASH Balance Analysis:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 pc_balance <- read_csv("../data/POS_CASH_balance.csv")
 # only pull the most recent month
-pc_balance <- pc_balance[pc_balance$MONTHS_BALANCE == -1, ]
 
-n_distinct(pc_balance$SK_ID_CURR)
+prev_month <- pc_balance[pc_balance$MONTHS_BALANCE == -1, ] %>% 
+  select(-SK_ID_PREV) %>% 
+  mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
+  group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>% 
+  summarise_all(fn)
+
+sel <- names(prev_month)[!names(prev_month) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS")]
+
+prev_month <- dcast(setDT(prev_month), 
+                   SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
+                   value.var = sel)
+
+prev_month <- change_names(prev_month,
+                           excl = "SK_ID_CURR",
+                           slug = "_pos_pm")
+
+tr <- tr %>%
+  left_join(prev_month, by = "SK_ID_CURR")
+
+rm(prev_month); gc();
+
+iv_pos_pm <- calc.iv(tr)
+iv_pos_pm <- data.frame(iv_pos_pm$Summary)
+ind <- !(iv_pos_pm$Variable %in% names(tr))
+var.names <- iv_pos_pm$Variable
+iv_pos_pm[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_pos_pm$Variable[(iv_pos_pm$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
 
 pc_balance <- pc_balance %>% 
   select(-SK_ID_PREV) %>% 
@@ -281,74 +389,294 @@ pc_balance <- pc_balance %>%
   group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>% 
   summarise_all(fn)
 
-
 sel <- names(pc_balance)[!names(pc_balance) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS")]
 
 pc_balance <- dcast(setDT(pc_balance), 
                    SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
                    value.var = sel)
 
+pc_balance <- change_names(pc_balance, 
+                           excl = "SK_ID_CURR",
+                           slug = "_pos_tot")
 
-tr <- tr[, 1:121]
 tr <- tr %>%
   left_join(pc_balance, by = "SK_ID_CURR")
 
+rm(pc_balance); gc()
+
+iv_pos_tot <- calc.iv(tr)
+iv_pos_tot <- data.frame(iv_pos_tot$Summary)
+ind <- !(iv_pos_tot$Variable %in% names(tr))
+var.names <- iv_pos_tot$Variable
+iv_pos_tot[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_pos_tot$Variable[(iv_pos_tot$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
 ```
 
-
-### Test information from new pc_balance variables:
-
-```{r message=FALSE, warning=FALSE, include=FALSE}
-y <- as.factor(tr$TARGET)
-set.seed(1234)
-down_tr <- caret::downSample(x = tr,y = y)
-y_tr <- as.numeric(down_tr$Class)
-y_tr[y_tr == 1] <- 0
-y_tr[y_tr == 2] <- 1
-down_tr$Class <- y_tr
-
-IV <- create_infotables(data=down_tr, y="Class")
-plot_infotables(IV, IV$Summary$Variable[1:20], same_scale=TRUE)
-
-keep <- IV$Summary$Variable[(IV$Summary$IV >= 0.0001)]
-tr <- tr[, keep]
-
-rm(payments, totals, cc_payments); gc();
-```
-
-
+### Previous application analysis:
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 prev <- read_csv("../data/previous_application.csv")
+prev <- prev[prev$FLAG_LAST_APPL_PER_CONTRACT == 'Y',]
 
-sum_prev <- prev %>%
-  select(-SK_ID_PREV) %>% 
+# Regroup NAME_CASH_LOAN_PURPOSE
+capital <- c("Building a house or an annex",
+                "Business development",
+                "Buying a garage",
+                "Buying a holiday home / land",
+                "Buying a home",
+                "Buying a new car",
+                "Buying a used car")
+
+problems <- c("Car repairs",
+              "Repairs",
+              "Urgent needs",
+              "Everyday expenses",
+              "Gasification / water supply",
+              "Money for a third person",
+              "Refusal to name the goal",
+              "Payments on other loans",
+              "Medicine")
+
+spending <- c("Wedding / gift / holiday", 
+              "Purchase of electronic equipment",
+              "Money for a third person",
+              "Hobby",
+              "Journey",
+              "Furniture")
+
+prev$NAME_CASH_LOAN_PURPOSE[prev$NAME_CASH_LOAN_PURPOSE %in% capital] <- "capital"
+prev$NAME_CASH_LOAN_PURPOSE[prev$NAME_CASH_LOAN_PURPOSE %in% problems] <- "problems"
+prev$NAME_CASH_LOAN_PURPOSE[prev$NAME_CASH_LOAN_PURPOSE %in% spending] <- "spending"
+
+table(prev$NAME_CASH_LOAN_PURPOSE)
+
+
+# Regroup CHANNEL_TYPE:
+#table(prev$CHANNEL_TYPE)
+other <- c("Car dealer",
+           "Channel of corporate sales",
+           "Contact center")
+
+prev$CHANNEL_TYPE[prev$CHANNEL_TYPE %in% other] <- "other"
+
+prev <- prev %>%
+  select(-SK_ID_PREV) %>%
   mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
   mutate(DAYS_FIRST_DRAWING = ifelse(DAYS_FIRST_DRAWING == 365243, NA, DAYS_FIRST_DRAWING),
          DAYS_FIRST_DUE = ifelse(DAYS_FIRST_DUE == 365243, NA, DAYS_FIRST_DUE),
          DAYS_LAST_DUE_1ST_VERSION = ifelse(DAYS_LAST_DUE_1ST_VERSION == 365243, NA, DAYS_LAST_DUE_1ST_VERSION),
          DAYS_LAST_DUE = ifelse(DAYS_LAST_DUE == 365243, NA, DAYS_LAST_DUE),
          DAYS_TERMINATION = ifelse(DAYS_TERMINATION == 365243, NA, DAYS_TERMINATION),
-         APP_CREDIT_PERC = AMT_APPLICATION / AMT_CREDIT) %>% 
-  group_by(SK_ID_CURR) %>% 
-  summarise_all(fn) 
+         APP_CREDIT_PERC = AMT_APPLICATION / AMT_CREDIT)
 
-rm(prev); gc()
+```
+
+### Groupings of previous application data:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+counts <- prev %>%
+  group_by(SK_ID_CURR) %>%
+  tally() %>%
+  change_names("SK_ID_CURR", "_count")
+
+tr <- tr %>%
+  left_join(counts, by = "SK_ID_CURR")
+
+rm(counts); gc()
+
+iv_prev_ct <- calc.iv(tr)
+iv_prev_ct <- data.frame(iv_prev_ct$Summary)
+ind <- !(iv_prev_ct$Variable %in% names(tr))
+var.names <- iv_prev_ct$Variable
+iv_prev_ct[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_ct$Variable[(iv_prev_ct$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[,1:2]
+
+# Totals:
+totals <- prev %>%
+  group_by(SK_ID_CURR) %>%
+  summarise_all(fn) %>%
+  change_names("SK_ID_CURR", "_total")
+
+tr <- tr %>%
+  left_join(totals, by = "SK_ID_CURR")
+
+rm(totals); gc()
+
+iv_prev_tot <- calc.iv(tr)
+iv_prev_tot <- data.frame(iv_prev_tot$Summary)
+ind <- !(iv_prev_tot$Variable %in% names(tr))
+var.names <- iv_prev_tot$Variable
+iv_prev_tot[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_tot$Variable[(iv_prev_tot$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[, 1:2]
+
+# By contract type:
+contract_type <- prev %>%
+  group_by(SK_ID_CURR, NAME_CONTRACT_TYPE) %>%
+  summarise_all(fn) %>%
+  change_names(c("SK_ID_CURR", "NAME_CONTRACT_TYPE"), "_ct_type")
+
+sel <- names(contract_type)[!(names(contract_type) %in% c("SK_ID_CURR", "NAME_CONTRACT_TYPE"))]
+
+contract_type <- dcast(setDT(contract_type), 
+                       SK_ID_CURR ~ NAME_CONTRACT_TYPE, 
+                       value.var = sel)
+
+tr <- tr %>%
+  left_join(contract_type, by = "SK_ID_CURR")
+
+rm(contract_type); gc()
+
+iv_prev_ctype <- calc.iv(tr)
+iv_prev_ctype <- data.frame(iv_prev_ctype$Summary)
+ind <- !(iv_prev_ctype$Variable %in% names(tr))
+var.names <- iv_prev_ctype$Variable
+iv_prev_ctype[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_ctype$Variable[(iv_prev_ctype$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[, 1:2]
+
+# By cash loan purpose:
+cash_loan_purpose <- prev %>%
+  group_by(SK_ID_CURR, NAME_CASH_LOAN_PURPOSE) %>%
+  summarise_all(fn) %>%
+  change_names(c("SK_ID_CURR", "NAME_CASH_LOAN_PURPOSE"), "_cl_purpose")
+
+sel <- names(cash_loan_purpose)[!(names(cash_loan_purpose) %in% c("SK_ID_CURR", "NAME_CASH_LOAN_PURPOSE"))]
+
+cash_loan_purpose <- dcast(setDT(cash_loan_purpose), 
+                   SK_ID_CURR ~ NAME_CASH_LOAN_PURPOSE, 
+                   value.var = sel)
+
+tr <- tr %>%
+  left_join(cash_loan_purpose, by = "SK_ID_CURR")
+
+rm(cash_loan_purpose); gc()
+
+iv_prev_clp <- calc.iv(tr)
+iv_prev_clp <- data.frame(iv_prev_clp$Summary)
+ind <- !(iv_prev_clp$Variable %in% names(tr))
+var.names <- iv_prev_clp$Variable
+iv_prev_clp[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_clp$Variable[(iv_prev_clp$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+
+tr <- tr[, 1:2]
+
+write_csv(keep, 'train_keep.csv')
+rm(keep); gc();
+
+contract_status <- prev %>%
+  group_by(SK_ID_CURR, NAME_CONTRACT_STATUS) %>%
+  summarise_all(fn) %>%
+  change_names(c("SK_ID_CURR", "NAME_CONTRACT_STATUS"), "_ct_status")
+
+sel <- names(contract_status)[!(names(contract_status) %in% c("SK_ID_CURR", "NAME_CONTRACT_STATUS"))]
+
+contract_status <- dcast(setDT(contract_status), 
+                    SK_ID_CURR ~ NAME_CONTRACT_STATUS, 
+                    value.var = sel)
+tr <- tr %>%
+  left_join(contract_status, by = "SK_ID_CURR")
+
+rm(contract_status); gc()
+
+iv_prev_cstat <- calc.iv(tr)
+iv_prev_cstat <- data.frame(iv_prev_cstat$Summary)
+ind <- !(iv_prev_cstat$Variable %in% names(tr))
+var.names <- iv_prev_cstat$Variable
+iv_prev_cstat[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_cstat$Variable[(iv_prev_cstat$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- read_csv('train_keep.csv')
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+write_csv(keep, 'train_keep.csv')
+rm(keep); gc()
+
+tr <- tr[, 1:2]
+
+channel_type <- prev %>%
+  group_by(SK_ID_CURR, CHANNEL_TYPE) %>%
+  summarise_all(fn) %>%
+  change_names(c("SK_ID_CURR", "CHANNEL_TYPE"), "_chan_type")
+
+sel <- names(channel_type)[!(names(channel_type) %in% c("SK_ID_CURR", "CHANNEL_TYPE"))]
+
+channel_type <- dcast(setDT(channel_type), 
+                      SK_ID_CURR ~ CHANNEL_TYPE, 
+                      value.var = sel)
+
+tr <- tr %>%
+  left_join(channel_type, by = "SK_ID_CURR")
+
+rm(channel_type); gc()
+
+iv_prev_chantype <- calc.iv(tr)
+iv_prev_chantype <- data.frame(iv_prev_chantype$Summary)
+ind <- !(iv_prev_chantype$Variable %in% names(tr))
+var.names <- iv_prev_chantype$Variable
+iv_prev_chantype[ind, c("Variable")] <- gsub("X", "", var.names[ind])
+keep.list <- iv_prev_chantype$Variable[(iv_prev_chantype$IV >= .01)]
+keep.list <- c("SK_ID_CURR", keep.list)
+
+keep <- read_csv('train_keep.csv')
+keep <- keep %>% 
+  left_join(tr[, keep.list], by="SK_ID_CURR")
+write_csv(keep, 'train_keep.csv')
+rm(keep, tr, prev); gc()
+
+# save information value info:
+write_csv(iv_bureau_totals, 'iv_bureau_totals.csv')
+write_csv(iv_cc, 'iv_cc.csv')
+write_csv(iv_cc_pmt_v1, 'iv_cc_pmt_v1.csv')
+write_csv(iv_credit_type_active, 'iv_credit_type_active.csv')
+write_csv(iv_pmt_tot, 'iv_pmt_tot.csv')
+write_csv(iv_pos_pm, 'iv_pos_pm.csv')
+write_csv(iv_pos_tot, 'iv_pos_tot.csv')
+write_csv(iv_prev_chantype, 'iv_prev_chantype.csv')
+write_csv(iv_prev_clp, 'iv_prev_clp.csv')
+write_csv(iv_prev_cstat, 'iv_prev_cstat.csv')
+write_csv(iv_prev_ct, 'iv_prev_ct.csv')
+write_csv(iv_prev_ctype, 'iv_prev_ctype.csv')
+write_csv(iv_prev_tot, 'iv_prev_tot.csv')
+
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
+keep <- read_csv('train_keep.csv')
 tr <- read_csv("../data/application_train.csv")
-te <- read_csv("../data/application_test.csv")
+#te <- read_csv("../data/application_test.csv")
 
-tr_te <- train %>% 
+tr <- tr %>% 
   select(-TARGET) %>% 
-  bind_rows(test) %>%
-  left_join(sum_bureau, by = "SK_ID_CURR") %>% 
-  left_join(sum_cc_balance, by = "SK_ID_CURR") %>% 
-  left_join(sum_payments, by = "SK_ID_CURR") %>% 
-  left_join(sum_pc_balance, by = "SK_ID_CURR") %>% 
-  left_join(sum_prev, by = "SK_ID_CURR") %>% 
-  select(-SK_ID_CURR) %>% 
+  #bind_rows(te) %>%
+  #select(-SK_ID_CURR) %>% 
   mutate_if(is.character, funs(factor(.) %>% as.integer)) %>% 
   mutate(na = apply(., 1, function(x) sum(is.na(x))),
          DAYS_EMPLOYED = ifelse(DAYS_EMPLOYED == 365243, NA, DAYS_EMPLOYED),
@@ -370,20 +698,26 @@ tr_te <- train %>%
 
 docs <- str_subset(names(tr), "FLAG_DOC")
 live <- str_subset(names(tr), "(?!NFLAG_)(?!FLAG_DOC)(?!_FLAG_)FLAG_")
-inc_by_org <- tr_te %>% 
+inc_by_org <- tr %>% 
   group_by(ORGANIZATION_TYPE) %>% 
   summarise(m = median(AMT_INCOME_TOTAL)) %$% 
   setNames(as.list(m), ORGANIZATION_TYPE)
 
-tr_te %<>% 
-  mutate(DOC_IND_KURT = apply(tr_te[, docs], 1, moments::kurtosis),
-         LIVE_IND_SUM = apply(tr_te[, live], 1, sum),
-         NEW_INC_BY_ORG = recode(tr_te$ORGANIZATION_TYPE, !!!inc_by_org),
-         NEW_EXT_SOURCES_MEAN = apply(tr_te[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, mean),
-         NEW_SCORES_STD = apply(tr_te[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, sd))%>%
+tr <- tr %>% 
+  mutate(DOC_IND_KURT = apply(tr[, docs], 1, moments::kurtosis),
+         LIVE_IND_SUM = apply(tr[, live], 1, sum),
+         NEW_INC_BY_ORG = recode(tr$ORGANIZATION_TYPE, !!!inc_by_org),
+         NEW_EXT_SOURCES_MEAN = apply(tr[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, mean),
+         NEW_SCORES_STD = apply(tr[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, sd))%>%
   mutate_all(funs(ifelse(is.nan(.), NA, .))) %>% 
   mutate_all(funs(ifelse(is.infinite(.), NA, .)))
 
+ind <- !(names(keep) %in% names(tr))
+join.cols <- names(keep)[ind]
+join.cols <- c("SK_ID_CURR", join.cols)
+
+tr <- tr %>%
+  left_join(keep[, join.cols], by = "SK_ID_CURR")
 ```
 
 
@@ -391,12 +725,47 @@ tr_te %<>%
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 
-write.csv(sum_bureau, "../data/sum_bureau.csv")
-write.csv(sum_cc_balance, "../data/sum_cc_balance.csv")
-write.csv(sum_payments, "../data/sum_payments.csv")
-write.csv(sum_pc_balance, "../data/sum_pc_balance.csv")
-write.csv(sum_prev, "../data/sum_prev.csv")
-write.csv(tr_te, "../data/train_test_combined.csv")
+write_csv(tr, '../data/train_augmented.csv')
+
+rm(keep); gc()
+
 ```
 
+```{r message=FALSE, warning=FALSE, include=FALSE}
+cutoff = .03
 
+keep.list <- iv_bureau_totals$Variable[(iv_bureau_totals$IV >= cutoff)]
+new <- iv_cc$Variable[(iv_cc$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_cc_pmt_v1$Variable[(iv_cc_pmt_v1$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_credit_type_active$Variable[(iv_credit_type_active$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_pmt_tot$Variable[(iv_pmt_tot$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_pos_pm$Variable[(iv_pos_pm$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_pos_tot$Variable[(iv_pos_tot$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_chantype$Variable[(iv_prev_chantype$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_clp$Variable[(iv_prev_clp$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_cstat$Variable[(iv_prev_cstat$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_ct$Variable[(iv_prev_ct$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_ctype$Variable[(iv_prev_ctype$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+new <- iv_prev_tot$Variable[(iv_prev_tot$IV >= cutoff)]
+keep.list <- c(keep.list, new)
+
+keep.all <- !(names(tr) %in% keep.list)
+keep.tr <- (names(tr) %in% keep.list)
+
+keep.all <- names(tr)[keep.all]
+keep.tr <- names(tr)[keep.tr]
+keep.all <- c(keep.all, keep.tr)
+
+tr <- tr[, keep.all]
+```
