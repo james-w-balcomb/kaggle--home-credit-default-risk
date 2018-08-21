@@ -29,6 +29,7 @@ fn <- funs(mean, sd, min, max, sum, n_distinct, .args = list(na.rm = TRUE))
 ### Training data:
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 tr <- read_csv('../data/application_train.csv')
+te <- read_csv('../data/application_test.csv')
 ```
 
 ### Function to rename columns:
@@ -79,6 +80,179 @@ calc.iv <- function(dataset) {
   IV
 }
 ```
+
+
+### Additional features in train and test:
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+tri <- 1:nrow(tr)
+tr_te <- tr %>% select(-c(TARGET)) %>% bind_rows(te)
+y <- tr$TARGET
+rm(te); gc()
+
+docs <- str_subset(names(tr), "FLAG_DOC")
+live <- str_subset(names(tr), "(?!NFLAG_)(?!FLAG_DOC)(?!_FLAG_)FLAG_")
+inc_by_org <- tr %>% 
+  group_by(ORGANIZATION_TYPE) %>% 
+  summarise(m = median(AMT_INCOME_TOTAL)) %$% 
+  setNames(as.list(m), ORGANIZATION_TYPE)
+
+# regroup org type by default rates:
+orgs <- data.frame(tapply(tr$TARGET, tr$ORGANIZATION_TYPE, mean))
+names(orgs) <- "avg_def"
+res <- orgs[order(orgs$avg_def),]
+ORGANIZATION_TYPE <- row.names(orgs)[order(orgs$avg_def)]
+orgs <- data.frame(cbind(ORGANIZATION_TYPE, res))
+orgs$res <- as.numeric(as.character(orgs$res))
+orgs$org_inc_level <- "default"
+orgs[which(orgs$res <= .048), "org_inc_level"] <- "low"
+orgs[which(orgs$res > .048 & orgs$res <= .065), "org_inc_level"] <- "mid-1"
+orgs[which(orgs$res > .065 & orgs$res <= .08), "org_inc_level"] <- "mid-2"
+orgs[which(orgs$res > .08 & orgs$res <= .099), "org_inc_level"] <- "mid-3"
+orgs[which(orgs$res > .099 & orgs$res <= .12), "org_inc_level"] <- "mid-4"
+orgs[which(orgs$res > .12), "org_inc_level"] <- "high"
+
+
+# regreoup occupation type by default rates:
+occs <- data.frame(tapply(tr$TARGET, tr$OCCUPATION_TYPE, mean))
+names(occs) <- "avg_def"
+res <- occs[order(occs$avg_def),]
+OCCUPATION_TYPE <- row.names(occs)[order(occs$avg_def)]
+occs <- data.frame(cbind(OCCUPATION_TYPE, res))
+occs$res <- as.numeric(as.character(occs$res))
+occs$occ_inc_level <- "default"
+occs[which(occs$res <= .08), "occ_inc_level"] <- "low"
+occs[which(occs$res > .08 & occs$res <= .12), "occ_inc_level"] <- "mid"
+occs[which(occs$res > .12), "occ_inc_level"] <- "high"
+
+
+# housing details:
+housing <- tr_te[, 45:91]
+na_count <- apply(housing, 1, function(x) sum(is.na(x)))
+na_count[which(na_count > 0 & na_count < 45)] <- 1
+na_count[na_count >= 45] <- 2
+tr_te$housing_docs_group <- as.character(na_count)
+
+# document flags:
+flags <- tr_te[,97:116]
+flags <- rowSums(flags)
+flags[flags > 0] <- 1
+tr_te$FLAG_DOCS_PROVIDED <- flags
+
+# function for one-hot encoding:
+
+facs = data.frame(Filter(is.character, tr_te))
+fnames <- names(facs)
+dmy <- tr_te$SK_ID_CURR
+for (f in fnames) {
+  col = facs[, f]
+  col[is.na(col) ] = paste(f, "missing", sep="")
+  m = model.matrix(~ col + 0)
+  dmy <- data.frame(cbind(dmy, m))
+}
+rm(facs); gc()
+
+
+#tr_te <- tr_te[, 1:123]
+tr_te %<>%
+  left_join(dmy, by = c("SK_ID_CURR" = "dmy")) %>%
+  left_join(orgs[, c("ORGANIZATION_TYPE", "org_inc_level")], by =     "ORGANIZATION_TYPE") %>%
+  left_join(occs[, c("OCCUPATION_TYPE", "occ_inc_level")], by = "OCCUPATION_TYPE") %>%
+  mutate_if(is.character, funs(factor(.) %>% as.integer))
+
+tr_te %<>%   
+  mutate(DOC_IND_KURT = apply(tr_te[, docs], 1, moments::kurtosis),
+         LIVE_IND_SUM = apply(tr_te[, live], 1, sum),
+         NEW_INC_BY_ORG = recode(tr_te$ORGANIZATION_TYPE, !!!inc_by_org),
+  NEW_EXT_SOURCES_MEAN = apply(tr_te[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, mean),
+         NEW_SCORES_STD = apply(tr_te[, c("EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3")], 1, sd),
+         na = apply(., 1, function(x) sum(is.na(x))),
+         DAYS_EMPLOYED = ifelse(DAYS_EMPLOYED == 365243, NA, DAYS_EMPLOYED),
+         DAYS_EMPLOYED_PERC = sqrt(DAYS_EMPLOYED / DAYS_BIRTH),
+         INCOME_CREDIT_PERC = AMT_INCOME_TOTAL / AMT_CREDIT,
+         CREDIT_INCOME_PERC = AMT_CREDIT / AMT_INCOME_TOTAL,
+         INCOME_PER_PERSON = log1p(AMT_INCOME_TOTAL / CNT_FAM_MEMBERS),
+         REGION_INCOME_RATIO = sqrt(AMT_INCOME_TOTAL /  REGION_POPULATION_RELATIVE),
+         ANNUITY_INCOME_PERC = sqrt(AMT_ANNUITY / (1 + AMT_INCOME_TOTAL)),
+         GOODS_TO_INCOME_RATIO = AMT_GOODS_PRICE / AMT_INCOME_TOTAL,
+         ANNUITY_LENGTH = AMT_CREDIT / AMT_ANNUITY,
+         CHILDREN_RATIO = CNT_CHILDREN / CNT_FAM_MEMBERS, 
+         CREDIT_TO_GOODS_RATIO = AMT_CREDIT / AMT_GOODS_PRICE,
+         INC_PER_CHLD = AMT_INCOME_TOTAL / (1 + CNT_CHILDREN),
+         SOURCES_PROD = EXT_SOURCE_1 * EXT_SOURCE_2 * EXT_SOURCE_3,
+         
+         CAR_TO_BIRTH_RATIO = OWN_CAR_AGE / DAYS_BIRTH,
+         CAR_TO_EMPLOY_RATIO = OWN_CAR_AGE / DAYS_EMPLOYED,
+         
+         PHONE_TO_BIRTH_RATIO = DAYS_LAST_PHONE_CHANGE / DAYS_BIRTH,
+         PHONE_TO_EMPLOY_RATIO = DAYS_LAST_PHONE_CHANGE / DAYS_EMPLOYED,
+          
+         FAM_MEMBERS_TO_LIVINGAREA_AVG = CNT_FAM_MEMBERS / LIVINGAREA_AVG,
+         FAM_MEMBERS_TO_NONLIVINGAREA_AVG = CNT_FAM_MEMBERS / NONLIVINGAREA_AVG,
+  
+         FAM_MEMBERS_TO_AGE = CNT_FAM_MEMBERS / DAYS_BIRTH,
+         FAM_MEMBERS_TO_EXT_SOURCE_3 = CNT_FAM_MEMBERS / EXT_SOURCE_3,
+         
+         CREDIT_TO_LIVINGAREA = AMT_CREDIT / LIVINGAREA_AVG,
+         CREDIT_TO_LANDAREA =  AMT_CREDIT / LANDAREA_AVG,
+         CREDIT_TO_TOTALAREA = AMT_CREDIT / TOTALAREA_MODE,
+         CREDIT_TO_BASEMENTAREA = AMT_CREDIT / BASEMENTAREA_AVG,
+         CREDIT_TO_EMPLOYED = AMT_CREDIT / DAYS_EMPLOYED,
+         CREDIT_TO_FAM_MEMBERS = AMT_CREDIT / CNT_FAM_MEMBERS,
+         CREDIT_TO_CHILDREN = AMT_CREDIT / (1 + CNT_CHILDREN),
+         CREDIT_TO_EXT_SOURCE_3 = AMT_CREDIT / EXT_SOURCE_3,
+         CREDIT_TO_EXT_SOURCE_2 = AMT_CREDIT / EXT_SOURCE_2,
+         CREDIT_TO_EXT_SOURCE_1 = AMT_CREDIT / EXT_SOURCE_1,
+  
+         ANNUITY_TO_LIVINGAREA = AMT_ANNUITY / LIVINGAREA_AVG,
+         ANNUITY_TO_LANDAREA =  AMT_ANNUITY / LANDAREA_AVG,
+         ANNUITY_TO_TOTALAREA = AMT_ANNUITY / TOTALAREA_MODE,
+         ANNUITY_TO_BASEMENTAREA = AMT_ANNUITY / BASEMENTAREA_AVG,
+         ANNUITY_TO_EMPLOYED = AMT_ANNUITY / DAYS_EMPLOYED,
+         ANNUITY_TO_FAM_MEMBERS = AMT_ANNUITY / CNT_FAM_MEMBERS,
+         ANNUITY_TO_CHILDREN = AMT_ANNUITY / (1 + CNT_CHILDREN),
+  
+         EXT_SOURCE_3_REGION = EXT_SOURCE_3 / REGION_RATING_CLIENT,
+         EXT_SOURCE_3_REGION_CITY = EXT_SOURCE_3 / REGION_RATING_CLIENT_W_CITY,
+         EXT_SOURCE_2_REGION = EXT_SOURCE_2 / REGION_RATING_CLIENT,
+         EXT_SOURCE_2_REGION_CITY = EXT_SOURCE_2 / REGION_RATING_CLIENT_W_CITY,
+         EXT_SOURCE_1_REGION = EXT_SOURCE_1 / REGION_RATING_CLIENT,
+         EXT_SOURCE_1_REGION_CITY = EXT_SOURCE_1 / REGION_RATING_CLIENT_W_CITY,
+  
+         INCOME_TO_EXT_SOURCE_3 = AMT_INCOME_TOTAL / EXT_SOURCE_3,
+         INCOME_TO_EXT_SOURCE_2 = AMT_INCOME_TOTAL / EXT_SOURCE_2,
+         INCOME_TO_EXT_SOURCE_1 = AMT_INCOME_TOTAL / EXT_SOURCE_1,
+         INCOME_TO_REGION = AMT_INCOME_TOTAL / REGION_RATING_CLIENT,
+         INCOME_TO_REGION_CITY = AMT_INCOME_TOTAL / REGION_RATING_CLIENT_W_CITY
+  
+  ) %>%
+  mutate_all(funs(ifelse(is.nan(.), NA, .))) %>% 
+  mutate_all(funs(ifelse(is.infinite(.), NA, .))) %>%
+  select(-c(fnames))
+
+
+tr <- tr_te[tri, ]
+tr$TARGET <- y
+#keep <- names(tr)[!names(tr) %in% fnames]
+#ivs <- calc.iv(subset(tr, select=keep))
+
+ivs <- calc.iv(tr)
+ivs$Summary
+
+comp <- complete.cases(tr[, c("CREDIT_TO_EXT_SOURCE_3", "EXT_SOURCE_3")])
+cor(tr[comp, c("CREDIT_TO_EXT_SOURCE_3","EXT_SOURCE_3")])
+
+
+rm(dmy); gc()
+```
+
+
+
+
+
+
+
+
 
 
 ### Balance data analysis:
@@ -769,40 +943,6 @@ keep.all <- c(keep.all, keep.tr)
 
 tr <- tr[, keep.all]
 ```
-### Add additional features to train set:
-
-```{r message=FALSE, warning=FALSE, include=FALSE}
-
-# housing details:
-housing <- tro[, 45:91]
-na_count <- apply(housing, 1, function(x) sum(is.na(x)))
-housing$TARGET <- as.numeric(tr$TARGET) - 1
-
-na_count[which(na_count > 0 & na_count < 45)] <- 1
-na_count[na_count >= 45] <- 2
-housing$na_count <- na_count
-
-# document flags:
-names(tro)[0:122]
-flags <- tro[,97:116]
-flags <- rowSums(flags)
-flags[flags > 0] <- 1
-
-tapply(housing$TARGET, flags, mean)
-tr$FLAG_DOCS_PROVIDED <- flags
-
-names(tr)
-
-y <- housing$TARGET
-own_both <- tr$FLAG_OWN_CAR + tr$FLAG_OWN_REALTY
-tapply(y, tr$CODE_GENDER, mean)
-
-table(tr$CODE_GENDER)
-
-
-```
-
-
 
 
 

@@ -37,10 +37,11 @@ params <- list(objective = "binary:logistic",
           eval_metric = "auc",
           nthread = 4,
           eta = 0.05,
-          max_depth = 6,
+          max_depth = 10,
           min_child_weight = 30,
-          gamma = 0,
-          subsample = 0.85,
+          #scale_pos_weight = (8.0/92.0), use for full dataset
+          gamma = 3,
+          subsample = 0.5,
           colsample_bytree = 0.7,
           colsample_bylevel = 0.632,
           alpha = 0,
@@ -69,7 +70,7 @@ make.cv <- function(dataset) {
                data = M, 
                nrounds = params$nrounds,
                nfold = 10,
-               print_every_n = 25,
+               print_every_n = 5,
                early_stopping_rounds = 50
                )
   cv
@@ -81,18 +82,9 @@ make.cv <- function(dataset) {
 
 ```{r}
 # imputed data with best columns:
-down.tr <- down.sample(tr.imp)
+tr$TARGET <- as.factor(tr$TARGET)
+down.tr <- down.sample(tr)
 cv <- make.cv(down.tr)
-
-# original data with best columns:
-tr.samp <- tr[, names(tr.imp)]
-down.tr.samp <- down.sample(tr.samp)
-down.tr.cv <- make.cv(down.tr.samp)
-
-# original data with all columns:
-tr$housing_info <- housing$na_count
-tr.down <- down.sample(tr)
-cv.down <- make.cv(tr.down)
 
 ```
 
