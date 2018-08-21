@@ -1,4 +1,4 @@
-import pandas as pd
+import pandas
 
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
@@ -29,7 +29,7 @@ def ats_get_dummies(data,
     ats_df_dummies : DataFrame
     """
     
-    ats_df_dummies = pd.DataFrame()
+    ats_df_dummies = pandas.DataFrame()
     
     if isinstance(data, DataFrame):
         
@@ -45,14 +45,14 @@ def ats_get_dummies(data,
                 columns_to_encode = list(set(included_column_names))
         
         for column_name in columns_to_encode:
-            if(data[column_name].dtype == pd.np.number):
+            if(data[column_name].dtype == pandas.np.number):
                 columns_to_encode.remove(column_name)
             elif data[column_name].dtype.name == 'category':
                 if data[column_name].cat.ordered:
                     columns_to_encode.remove(column_name)
         
         for column_name in columns_to_encode:
-            dummy = pd.get_dummies(data[column_name],
+            dummy = pandas.get_dummies(data[column_name],
                                    prefix=column_name,
                                    prefix_sep='__',
                                    dummy_na=False,
@@ -60,7 +60,7 @@ def ats_get_dummies(data,
                                    sparse=False,
                                    drop_first=False)
         
-            ats_df_dummies = pd.concat([ats_df_dummies, dummy], axis=1)
+            ats_df_dummies = pandas.concat([ats_df_dummies, dummy], axis=1)
             
             # drop the most frequent value for the reference level
             dropped_column_name = column_name + '__' + data.groupby([column_name]).size().idxmax()
@@ -69,13 +69,13 @@ def ats_get_dummies(data,
         return ats_df_dummies
     
     elif isinstance(data, Series):
-        if(data.dtype == pd.np.number):
+        if(data.dtype == pandas.np.number):
             return ats_df_dummies
         elif data.dtype.name == 'category':
             if data.cat.ordered:
                 return ats_df_dummies
         else:
-            dummy = pd.get_dummies(data,
+            dummy = pandas.get_dummies(data,
                                    prefix=data.name,
                                    prefix_sep='__',
                                    dummy_na=False,
@@ -83,7 +83,7 @@ def ats_get_dummies(data,
                                    sparse=False,
                                    drop_first=False)
             
-            ats_df_dummies = pd.concat([ats_df_dummies, dummy], axis=1)
+            ats_df_dummies = pandas.concat([ats_df_dummies, dummy], axis=1)
             
             # drop the most frequent value for the reference level
             dropped_column_name = data.name + '__' + data.value_counts().index[0]
