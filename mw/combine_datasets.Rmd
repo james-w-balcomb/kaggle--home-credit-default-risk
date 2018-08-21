@@ -769,3 +769,44 @@ keep.all <- c(keep.all, keep.tr)
 
 tr <- tr[, keep.all]
 ```
+### Add additional features to train set:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+# housing details:
+housing <- tro[, 45:91]
+na_count <- apply(housing, 1, function(x) sum(is.na(x)))
+housing$TARGET <- as.numeric(tr$TARGET) - 1
+
+na_count[which(na_count > 0 & na_count < 45)] <- 1
+na_count[na_count >= 45] <- 2
+housing$na_count <- na_count
+
+# document flags:
+names(tro)[0:122]
+flags <- tro[,97:116]
+flags <- rowSums(flags)
+flags[flags > 0] <- 1
+
+tapply(housing$TARGET, flags, mean)
+tr$FLAG_DOCS_PROVIDED <- flags
+
+names(tr)
+
+y <- housing$TARGET
+own_both <- tr$FLAG_OWN_CAR + tr$FLAG_OWN_REALTY
+tapply(y, tr$CODE_GENDER, mean)
+
+table(tr$CODE_GENDER)
+
+
+```
+
+
+
+
+
+
+
+
+

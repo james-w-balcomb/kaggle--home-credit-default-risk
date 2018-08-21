@@ -1,0 +1,131 @@
+---
+title: "build-model"
+author: "mwinkler"
+date: "August 13, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xgboost)
+library(tidyverse)
+```
+
+### Load datasets:
+
+```{r}
+tro <- read.csv('../data/application_train.csv')
+#tr_te <- read.csv('../data/train_test_combined.csv', row.names=1)
+#tr.imp <- read.csv('../data/train_imputed.csv', row.names = 1)
+
+tr$TARGET <- as.factor(tr$TARGET)
+```
+
+### Model Testing functions:
+
+```{r}
+
+params <- list(objective = "binary:logistic",
+          booster = "gbtree",
+          eval_metric = "auc",
+          nthread = 4,
+          eta = 0.05,
+          max_depth = 6,
+          min_child_weight = 30,
+          gamma = 0,
+          subsample = 0.85,
+          colsample_bytree = 0.7,
+          colsample_bylevel = 0.632,
+          alpha = 0,
+          lambda = 0,
+          nrounds = 300)
+
+down.sample <- function(dataset) {
+  Y = dataset$TARGET
+  X = subset(dataset, select=-c(TARGET))
+  data.down <- caret::downSample(x = X, y = Y)
+  data.down
+}
+
+random.sample <- function(df,n) { 
+   pos = df[df$TARGET == 1,]
+   neg = df[df$TARGET == 0,]
+   neg = neg[sample(nrow(neg), n),]
+   result = rbind(pos, neg)
+   result
+}
+
+
+make.cv.xg <- function(dataset) {
+  
+  y = as.numeric(dataset$TARGET)
+  y[y == 1] = 0
+  y[y == 2] = 1
+  dataset$TARGET = y
+  
+  dataset = subset(dataset, select = -c(TARGET, SK_ID_CURR))
+  dataset = dataset %>% as.matrix()
+  
+  M <- xgb.DMatrix(dataset, label = y)
+  cv <- xgb.cv(params = params,
+               data = M, 
+               nrounds = params$nrounds,
+               nfold = 10,
+               print_every_n = 5,
+               early_stopping_rounds = 50
+               )
+  cv
+}
+
+TT119V2R2
+
+```
+
+### Cross-validation testing:
+
+```{r}
+# imputed data with best columns:
+#down.tr <- down.sample(tr)
+set.seed(1234)
+down.tr <- random.sample(tr, 25000)
+#cv <- make.cv(down.tr)
+cv <- make.cv.rf(down.tr)
+```
+
+From testing, it looks like the best path for XGBoost on this dataset is to engineer many features and throw them at the model. Look at feature importances. Take the most promising features and focus future efforts there to construct additional features.
+
+
+```{r}
+#tri <- caret::createDataPartition(y, p = 0.9, list = F) %>% c()
+
+dtrain <- xgb.DMatrix(data = tr.down, label = y_train)
+dval <- xgb.DMatrix(data = tr.down[-tri,], label = y[-tri])
+#cols <- colnames(down_tr)
+
+params <- list(objective = "binary:logistic",
+          booster = "gbtree",
+          eval_metric = "auc",
+          nthread = 4,
+          eta = 0.05,
+          max_depth = 6,
+          min_child_weight = 30,
+          gamma = 0,
+          subsample = 0.85,
+          colsample_bytree = 0.7,
+          colsample_bylevel = 0.632,
+          alpha = 0,
+          lambda = 0,
+          nrounds = 500)
+
+set.seed(1234)
+m_xgb <- xgb.train(params, 
+                   dtrain, 
+                   params$nrounds, 
+                   list(val = dval), 
+                   print_every_n = 50, 
+                   early_stopping_rounds = 50)
+
+xgb.importance(feature_names=cols, model=m_xgb) %>% 
+  xgb.plot.importance(top_n = 50)
+
+```
