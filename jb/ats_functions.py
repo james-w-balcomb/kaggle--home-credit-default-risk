@@ -117,12 +117,12 @@ def is_numeric_series(pandas_series):
     
     if pandas.api.types.is_numeric_dtype(pandas_series):
         pandas_series_is_numeric_series = True
-        print('is_numeric_dtype = True')
+        #print('is_numeric_dtype = True')
     else:
         #print('is_numeric_dtype = False (' + str(type(pandas_series)) + ')')
-        print('is_numeric_dtype = False')
-        print(type(pandas_series))
-        print(pandas_series.dtype)
+        #print('is_numeric_dtype = False')
+        #print(type(pandas_series))
+        #print(pandas_series.dtype)
         for index_number in pandas_series.index:
             pandas_series_value = pandas_series.loc[index_number]
             #print(pandas_series_value)
@@ -143,7 +143,7 @@ def is_boolean_series(pandas_series):
     
     pandas_series_is_boolean_series = None
     
-    if pandas_series.nunique() == 2:
+    if pandas_series.nunique(dropna=False) == 2:
         # if set(pandas_series.unique().tolist()) == {0,1}:
         if set(pandas_series.unique().astype(int).tolist()) == {0,1}:
             #TODO(JamesBalcomb): ValueError: cannot convert float NaN to integer
@@ -154,5 +154,20 @@ def is_boolean_series(pandas_series):
         pandas_series_is_boolean_series = False
     
     return pandas_series_is_boolean_series
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+def is_binary_series(pandas_series):
+    
+    pandas_series_is_binary_series = None
+    
+    if pandas_series.nunique(dropna=False) == 2:
+        pandas_series_is_binary_series = True
+    else:
+        pandas_series_is_binary_series = False
+    
+    return pandas_series_is_binary_series
 
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
