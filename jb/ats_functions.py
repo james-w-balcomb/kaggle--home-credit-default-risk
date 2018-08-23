@@ -138,15 +138,20 @@ def is_numeric_series(pandas_series):
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
 
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
-
 def is_boolean_series(pandas_series):
     
     pandas_series_is_boolean_series = None
     
     if pandas_series.nunique(dropna=False) == 2:
         # if set(pandas_series.unique().tolist()) == {0,1}:
-        if set(pandas_series.unique().astype(int).tolist()) == {0,1}:
+        #if set(pandas_series.unique().astype(int).tolist()) == {0,1}:
             #TODO(JamesBalcomb): ValueError: cannot convert float NaN to integer
+            #TODO(JamesBalcomb): ValueError: invalid literal for int() with base 10: 'M'
+        pandas_series_set = set(pandas_series.unique().astype(str).tolist())
+        if (
+                pandas_series_set == {False,True} or
+                pandas_series_set == {'0','1'}
+            ):
             pandas_series_is_boolean_series = True
         else:
             pandas_series_is_boolean_series = False
@@ -154,11 +159,9 @@ def is_boolean_series(pandas_series):
         pandas_series_is_boolean_series = False
     
     return pandas_series_is_boolean_series
-
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
 
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
-
 def is_binary_series(pandas_series):
     
     pandas_series_is_binary_series = None
@@ -169,5 +172,138 @@ def is_binary_series(pandas_series):
         pandas_series_is_binary_series = False
     
     return pandas_series_is_binary_series
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
 
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+def make_capped_columns(pandas_data_frame):
+    
+    pandas_data_frame_column_names = sorted(pandas_data_frame.columns.tolist())
+    
+    new_data_frame = pandas.DataFrame()
+    
+    column_name_suffix = '__capped_iqr'
+    
+    for column_name in pandas_data_frame_column_names:
+        first_quartile = pandas_data_frame[column_name].quantile(0.25)
+        third_quartile = pandas_data_frame[column_name].quantile(0.75)
+        inner_quartile_range = third_quartile - first_quartile
+        IQR150 = inner_quartile_range * 1.50
+        Q1IQR150 = first_quartile - IQR150
+        Q3IQR150 = third_quartile + IQR150
+        new_data_frame[column_name + column_name_suffix] = pandas_data_frame[column_name]
+        new_data_frame.loc[new_data_frame[column_name + column_name_suffix] < Q1IQR150, column_name + column_name_suffix] = Q1IQR150
+        new_data_frame.loc[new_data_frame[column_name + column_name_suffix] > Q3IQR150, column_name + column_name_suffix] = Q3IQR150
+    
+    return new_data_frame
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+def make_transformed_columns(pandas_data_frame):
+    
+    pandas_data_frame_column_names = sorted(pandas_data_frame.columns.tolist())
+    
+    new_data_frame = pandas.DataFrame()
+    
+    for column_name in pandas_data_frame_column_names:
+        
+        column_name_suffix = '__loge'
+        new_data_frame[column_name + column_name_suffix] = numpy.log(pandas_data_frame[column_name])
+        
+        column_name_suffix = '__log1p'
+        new_data_frame[column_name + column_name_suffix] = numpy.log1p(pandas_data_frame[column_name])
+        
+        column_name_suffix = '__log2'
+        new_data_frame[column_name + column_name_suffix] = numpy.log2(pandas_data_frame[column_name])
+        
+        column_name_suffix = '__log10'
+        new_data_frame[column_name + column_name_suffix] = numpy.log10(pandas_data_frame[column_name])
+        
+        column_name_suffix = '__pwr2'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 2)
+        
+        column_name_suffix = '__pwr3'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 3)
+        
+        column_name_suffix = '__pwr4'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 4)
+        
+        column_name_suffix = '__pwr5'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 5)
+        
+        column_name_suffix = '__pwr6'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 6)
+        
+        column_name_suffix = '__pwr7'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 7)
+        
+        column_name_suffix = '__pwr8'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 8)
+        
+        column_name_suffix = '__pwr9'
+        new_data_frame[column_name + column_name_suffix] = numpy.power(pandas_data_frame[column_name], 9)
+        
+        column_name_suffix = '__exp'
+        new_data_frame[column_name + column_name_suffix] = numpy.exp(pandas_data_frame[column_name])
+        
+        column_name_suffix = '__sqrt'
+        new_data_frame[column_name + column_name_suffix] = numpy.sqrt(pandas_data_frame[column_name])
+    
+    return new_data_frame
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+def make_imputed_columns(pandas_data_frame):
+    
+    pandas_data_frame_column_names = sorted(pandas_data_frame.columns.tolist())
+    
+    new_data_frame = pandas.DataFrame()
+    
+    column_name_suffix = '__imputed_mean'
+    
+    for column_name in pandas_data_frame_column_names:
+        new_data_frame[column_name + column_name_suffix] = pandas_data_frame[column_name].fillna(pandas_data_frame[column_name].mean())
+    
+    column_name_suffix = '__imputed_median'
+    
+    for column_name in pandas_data_frame_column_names:
+        new_data_frame[column_name + column_name_suffix] = pandas_data_frame[column_name].fillna(pandas_data_frame[column_name].mean())
+    
+    return new_data_frame
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+def make_zscored_columns(pandas_data_frame):
+    
+    pandas_data_frame_column_names = sorted(pandas_data_frame.columns.tolist())
+    
+    new_data_frame = pandas.DataFrame()
+    
+    column_name_suffix = '__zscore'
+        
+    for column_name in pandas_data_frame_column_names:
+        new_data_frame[column_name + column_name_suffix] = (pandas_data_frame[column_name] - pandas_data_frame[column_name].mean()) / pandas_data_frame[column_name].std(ddof=0)
+    
+    return new_data_frame
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+import lightgbm as lgb
+
+def get_score_lightgbm(df, usecols, params, dropcols=[]):
+    
+    dtrain = lgb.Dataset(df[usecols].drop(dropcols, axis=1), df['TARGET'])
+    
+    eval = lgb.cv(
+            params,
+            dtrain,
+            nfold=5,
+            stratified=True,
+            num_boost_round=20000,
+            early_stopping_rounds=200,
+            verbose_eval=100,
+            seed = 5,
+            show_stdv=True
+            )
+    
+    return max(eval['auc-mean'])
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
