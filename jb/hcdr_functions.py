@@ -5,6 +5,8 @@ import os
 import pandas
 import random
 
+import hcdr_functions
+
 
 #DATA_FILE_NAMES = list(
 #'application_test.csv',
@@ -237,4 +239,287 @@ def load_data_file__application_train_csv():
                     }
             )
 
+    return df
+
+credit_bureau_enquiries_column_names   = list()
+credit_scores_column_names             = list()
+asset_ownership_flags_column_names     = list()
+contact_information_flags_column_names = list()
+document_flags_column_names            = list()
+housing_characteristics_column_names   = list()
+
+# Categorical Polychotomous Variable Feature Sets
+credit_bureau_enquiries_column_names = [
+'AMT_REQ_CREDIT_BUREAU_DAY',
+'AMT_REQ_CREDIT_BUREAU_HOUR',
+'AMT_REQ_CREDIT_BUREAU_MON',
+'AMT_REQ_CREDIT_BUREAU_QRT',
+'AMT_REQ_CREDIT_BUREAU_WEEK',
+'AMT_REQ_CREDIT_BUREAU_YEAR'
+]
+credit_scores_column_names = [
+'EXT_SOURCE_1',
+'EXT_SOURCE_2',
+'EXT_SOURCE_3'
+]
+
+# Categorical Dichotomous Variable Feature Sets
+asset_ownership_flags_column_names = [
+'FLAG_OWN_REALTY',
+'FLAG_OWN_CAR'
+]
+contact_information_flags_column_names = [
+'FLAG_PHONE',
+'FLAG_WORK_PHONE',
+'FLAG_EMP_PHONE',
+'FLAG_MOBIL',
+'FLAG_EMAIL',
+'FLAG_CONT_MOBILE'
+]
+document_flags_column_names = [
+'FLAG_DOCUMENT_2',
+'FLAG_DOCUMENT_3',
+'FLAG_DOCUMENT_4',
+'FLAG_DOCUMENT_5',
+'FLAG_DOCUMENT_6',
+'FLAG_DOCUMENT_7',
+'FLAG_DOCUMENT_8',
+'FLAG_DOCUMENT_9',
+'FLAG_DOCUMENT_10',
+'FLAG_DOCUMENT_11',
+'FLAG_DOCUMENT_12',
+'FLAG_DOCUMENT_13',
+'FLAG_DOCUMENT_14',
+'FLAG_DOCUMENT_15',
+'FLAG_DOCUMENT_16',
+'FLAG_DOCUMENT_17',
+'FLAG_DOCUMENT_18',
+'FLAG_DOCUMENT_19',
+'FLAG_DOCUMENT_20',
+'FLAG_DOCUMENT_21'
+]
+housing_characteristics_column_names = [
+'APARTMENTS_AVG',
+'APARTMENTS_MEDI',
+'APARTMENTS_MODE',
+'BASEMENTAREA_AVG',
+'BASEMENTAREA_MEDI',
+'BASEMENTAREA_MODE',
+'COMMONAREA_AVG',
+'COMMONAREA_MEDI',
+'COMMONAREA_MODE',
+'ELEVATORS_AVG',
+'ELEVATORS_MEDI',
+'ELEVATORS_MODE',
+'EMERGENCYSTATE_MODE',
+'ENTRANCES_AVG',
+'ENTRANCES_MEDI',
+'ENTRANCES_MODE',
+'FLOORSMAX_AVG',
+'FLOORSMAX_MEDI',
+'FLOORSMAX_MODE',
+'FLOORSMIN_AVG',
+'FLOORSMIN_MEDI',
+'FLOORSMIN_MODE',
+'FONDKAPREMONT_MODE',
+'HOUSETYPE_MODE',
+'LANDAREA_AVG',
+'LANDAREA_MEDI',
+'LANDAREA_MODE',
+'LIVINGAPARTMENTS_AVG',
+'LIVINGAPARTMENTS_MEDI',
+'LIVINGAPARTMENTS_MODE',
+'LIVINGAREA_AVG',
+'LIVINGAREA_MEDI',
+'LIVINGAREA_MODE',
+'NONLIVINGAPARTMENTS_AVG',
+'NONLIVINGAPARTMENTS_MEDI',
+'NONLIVINGAPARTMENTS_MODE',
+'NONLIVINGAREA_AVG',
+'NONLIVINGAREA_MEDI',
+'NONLIVINGAREA_MODE',
+'TOTALAREA_MODE',
+'WALLSMATERIAL_MODE',
+'YEARS_BEGINEXPLUATATION_AVG',
+'YEARS_BEGINEXPLUATATION_MEDI',
+'YEARS_BEGINEXPLUATATION_MODE',
+'YEARS_BUILD_AVG',
+'YEARS_BUILD_MEDI',
+'YEARS_BUILD_MODE'
+]
+
+
+def load_prepared_data_set__application_train_csv():
+    
+    df = hcdr_functions.load_data_file__application_train_csv()
+    
+    # make preliminary manual fixes
+    
+    df.loc[df['SK_ID_CURR'] == '141289', 'CODE_GENDER'] = 'F'
+    df.loc[df['SK_ID_CURR'] == '319880', 'CODE_GENDER'] = 'F'
+    df.loc[df['SK_ID_CURR'] == '196708', 'CODE_GENDER'] = 'F'
+    df.loc[df['SK_ID_CURR'] == '144669', 'CODE_GENDER'] = 'M'
+        
+    # make Missing Values Place-Holder flags
+    
+    column_name_prefix = 'missing_value_placeholder_flag__'
+    
+    column_name = 'DAYS_EMPLOYED'
+    missing_value_placeholder_value = 365243
+    df[column_name_prefix + column_name] = False
+    df.loc[df[column_name] == missing_value_placeholder_value, column_name_prefix + column_name] = True
+    df[column_name_prefix + column_name] = df[column_name_prefix + column_name].astype(int).astype(str)
+    
+    column_name = 'ORGANIZATION_TYPE'
+    missing_value_placeholder_value = 'XNA'
+    df[column_name_prefix + column_name] = False
+    df.loc[df[column_name] == missing_value_placeholder_value, column_name_prefix + column_name] = True
+    df[column_name_prefix + column_name] = df[column_name_prefix + column_name].astype(int).astype(str)
+    
+    # replace Missing Values Place-Holders
+    
+    column_name = 'DAYS_EMPLOYED'
+    missing_value_placeholder_value = 365243
+    df[column_name] = df[column_name].replace(missing_value_placeholder_value, numpy.nan)
+    
+    column_name = 'ORGANIZATION_TYPE'
+    missing_value_placeholder_value = 'XNA'
+    df[column_name] = df[column_name].replace(missing_value_placeholder_value, numpy.nan)
+    
+    # make Missing Values column count
+        
+    df['missing_values_column_count'] = df.isnull().sum(axis=1)
+    
+    # make Missing Values flags
+    
+    column_name_prefix = 'missing_value_flag__'
+    
+    for column_name in sorted(df.columns.tolist()):
+        if df[column_name].isnull().any():
+            df[column_name_prefix + column_name] = df[column_name].isnull().astype(int).astype(str)
+    
+    # make feature-set Missing Values counts
+    
+    # NA # asset_ownership_flags_column_names
+    # NA # contact_information_flags_column_names
+    df['missing_values_count__credit_bureau_enquiries'] = df[credit_bureau_enquiries_column_names].isnull().sum(axis=1)
+    df['missing_values_count__credit_scores'] = df[credit_scores_column_names].isnull().sum(axis=1)
+    # NA # document_flags_column_names
+    df['missing_values_count__housing_characteristics'] = df[housing_characteristics_column_names].isnull().sum(axis=1)
+    
+    # Convert categorical dichotomous variables to {0,1}
+    
+    df['FLAG_OWN_CAR'] = pandas.Series(numpy.where(df['FLAG_OWN_CAR'].values == 'Y', 1, 0), df.index)
+    df['FLAG_OWN_REALTY'] = pandas.Series(numpy.where(df['FLAG_OWN_REALTY'].values == 'Y', 1, 0), df.index)
+    
+    # make feature-set TRUE counts
+    
+    df['asset_ownership_flags_count'] = df[asset_ownership_flags_column_names].astype('int').sum(axis=1)
+    df['contact_information_flags_count'] = df[contact_information_flags_column_names].astype('int').sum(axis=1)
+    # NA # credit_bureau_enquiries_column_names
+    # NA # credit_scores_column_names
+    df['document_flags_count'] = df[document_flags_column_names].astype('int').sum(axis=1)
+    # NA # housing_characteristics_column_names
+        
+    # make engineered features
+    
+    df['EXT_SOURCE__mean'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1, skipna=True)      
+    df['difference__DAYS_BIRTH__OWN_CAR_AGE'] = df['DAYS_BIRTH'] - df['OWN_CAR_AGE']
+    df['difference__DAYS_BIRTH__DAYS_EMPLOYED'] = df['DAYS_BIRTH'] - df['DAYS_EMPLOYED']
+    df['ratio__AMT_CREDIT__AMT_ANNUITY'] = df['AMT_CREDIT'] / df['AMT_ANNUITY']
+    df['ratio__AMT_INCOME_TOTAL__AMT_CREDIT'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT']
+    df['ratio__AMT_CREDIT__AMT_GOODS_PRICE'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE']
+    df['ratio__DAYS_EMPLOYED__DAYS_BIRTH'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH']
+    df['ratio__DAYS_ID_PUBLISH__DAYS_BIRTH'] = df['DAYS_ID_PUBLISH'] / df['DAYS_BIRTH']
+    df['ratio__DAYS_LAST_PHONE_CHANGE__DAYS_BIRTH'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
+    df['ratio__DAYS_REGISTRATION__DAYS_BIRTH'] = df['DAYS_REGISTRATION'] / df['DAYS_BIRTH']
+    
+    # Replace categorical missing values with "MISSING"
+    
+    df['EMERGENCYSTATE_MODE'] = df['EMERGENCYSTATE_MODE'].fillna('MISSING')
+    df['FONDKAPREMONT_MODE'] = df['FONDKAPREMONT_MODE'].fillna('MISSING')
+    df['HOUSETYPE_MODE'] = df['HOUSETYPE_MODE'].fillna('MISSING')
+    df['NAME_TYPE_SUITE'] = df['NAME_TYPE_SUITE'].fillna('MISSING')
+    df['OCCUPATION_TYPE'] = df['OCCUPATION_TYPE'].fillna('MISSING')
+    df['ORGANIZATION_TYPE'] = df['EMERGENCYSTATE_MODE'].fillna('MISSING')
+    df['WALLSMATERIAL_MODE'] = df['WALLSMATERIAL_MODE'].fillna('MISSING')
+    
+    # Replace numerical missing values with the mean
+    
+    for column_name in sorted(df.select_dtypes(include=[numpy.number]).columns.tolist()):
+        if df[column_name].isnull().any():
+            df[column_name] = df[column_name].fillna(df[column_name].mean())
+    
+    # Finalize dtypes
+    
+    df['CODE_GENDER'] = df['CODE_GENDER'].astype('category')
+    df['EMERGENCYSTATE_MODE'] = df['EMERGENCYSTATE_MODE'].astype('category')
+    #df['EMERGENCYSTATE_MODE'] = df['EMERGENCYSTATE_MODE'].astype(pandas.api.types.CategoricalDtype(categories=['No', 'MISSING', 'Yes',], ordered=True))
+    df['FLAG_CONT_MOBILE'] = df['FLAG_CONT_MOBILE'].astype('category')
+    df['FLAG_DOCUMENT_2'] = df['FLAG_DOCUMENT_2'].astype('category')
+    df['FLAG_DOCUMENT_3'] = df['FLAG_DOCUMENT_3'].astype('category')
+    df['FLAG_DOCUMENT_4'] = df['FLAG_DOCUMENT_4'].astype('category')
+    df['FLAG_DOCUMENT_5'] = df['FLAG_DOCUMENT_5'].astype('category')
+    df['FLAG_DOCUMENT_6'] = df['FLAG_DOCUMENT_6'].astype('category')
+    df['FLAG_DOCUMENT_7'] = df['FLAG_DOCUMENT_7'].astype('category')
+    df['FLAG_DOCUMENT_8'] = df['FLAG_DOCUMENT_8'].astype('category')
+    df['FLAG_DOCUMENT_9'] = df['FLAG_DOCUMENT_9'].astype('category')
+    df['FLAG_DOCUMENT_10'] = df['FLAG_DOCUMENT_10'].astype('category')
+    df['FLAG_DOCUMENT_11'] = df['FLAG_DOCUMENT_11'].astype('category')
+    df['FLAG_DOCUMENT_12'] = df['FLAG_DOCUMENT_12'].astype('category')
+    df['FLAG_DOCUMENT_13'] = df['FLAG_DOCUMENT_13'].astype('category')
+    df['FLAG_DOCUMENT_14'] = df['FLAG_DOCUMENT_14'].astype('category')
+    df['FLAG_DOCUMENT_15'] = df['FLAG_DOCUMENT_15'].astype('category')
+    df['FLAG_DOCUMENT_16'] = df['FLAG_DOCUMENT_16'].astype('category')
+    df['FLAG_DOCUMENT_17'] = df['FLAG_DOCUMENT_17'].astype('category')
+    df['FLAG_DOCUMENT_18'] = df['FLAG_DOCUMENT_18'].astype('category')
+    df['FLAG_DOCUMENT_19'] = df['FLAG_DOCUMENT_19'].astype('category')
+    df['FLAG_DOCUMENT_20'] = df['FLAG_DOCUMENT_20'].astype('category')
+    df['FLAG_DOCUMENT_21'] = df['FLAG_DOCUMENT_21'].astype('category')
+    df['FLAG_EMAIL'] = df['FLAG_EMAIL'].astype('category')
+    df['FLAG_EMP_PHONE'] = df['FLAG_EMP_PHONE'].astype('category')
+    df['FLAG_MOBIL'] = df['FLAG_MOBIL'].astype('category')
+    df['FLAG_OWN_CAR'] = df['FLAG_OWN_CAR'].astype('category')
+    df['FLAG_OWN_REALTY'] = df['FLAG_OWN_REALTY'].astype('category')
+    df['FLAG_PHONE'] = df['FLAG_PHONE'].astype('category')
+    df['FLAG_WORK_PHONE'] = df['FLAG_WORK_PHONE'].astype('category')
+    df['FONDKAPREMONT_MODE'] = df['FONDKAPREMONT_MODE'].astype('category')
+    df['HOUSETYPE_MODE'] = df['HOUSETYPE_MODE'].astype('category')
+    df['LIVE_CITY_NOT_WORK_CITY'] = df['LIVE_CITY_NOT_WORK_CITY'].astype('category')
+    df['LIVE_REGION_NOT_WORK_REGION'] = df['LIVE_REGION_NOT_WORK_REGION'].astype('category')
+    df['NAME_CONTRACT_TYPE'] = df['NAME_CONTRACT_TYPE'].astype('category')
+    #df['NAME_EDUCATION_TYPE'] = df['NAME_EDUCATION_TYPE'].astype('category')
+    df['NAME_EDUCATION_TYPE'] = df['NAME_EDUCATION_TYPE'].astype(pandas.api.types.CategoricalDtype(categories=['Academic degree', 'Higher education', 'Incomplete higher', 'Secondary / secondary special', 'Lower secondary'], ordered=True))
+    df['NAME_FAMILY_STATUS'] = df['NAME_FAMILY_STATUS'].astype('category')
+    df['NAME_HOUSING_TYPE'] = df['NAME_HOUSING_TYPE'].astype('category')
+    df['NAME_INCOME_TYPE'] = df['NAME_INCOME_TYPE'].astype('category')
+    df['NAME_TYPE_SUITE'] = df['NAME_TYPE_SUITE'].astype('category')
+    df['OCCUPATION_TYPE'] = df['OCCUPATION_TYPE'].astype('category')
+    df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].astype('category')
+    df['REG_CITY_NOT_LIVE_CITY'] = df['REG_CITY_NOT_LIVE_CITY'].astype('category')
+    df['REG_CITY_NOT_WORK_CITY'] = df['REG_CITY_NOT_WORK_CITY'].astype('category')
+    df['REG_REGION_NOT_LIVE_REGION'] = df['REG_REGION_NOT_LIVE_REGION'].astype('category')
+    df['REG_REGION_NOT_WORK_REGION'] = df['REG_REGION_NOT_WORK_REGION'].astype('category')
+    #df['REGION_RATING_CLIENT'] = df['REGION_RATING_CLIENT'].astype('category')
+    df['REGION_RATING_CLIENT'] = df['REGION_RATING_CLIENT'].astype(pandas.api.types.CategoricalDtype(categories=['3', '2', '1'], ordered=True))
+    #df['REGION_RATING_CLIENT_W_CITY'] = df['REGION_RATING_CLIENT_W_CITY'].astype('category')
+    df['REGION_RATING_CLIENT_W_CITY'] = df['REGION_RATING_CLIENT_W_CITY'].astype(pandas.api.types.CategoricalDtype(categories=['3', '2', '1'], ordered=True))
+    #df['SK_ID_CURR'] = df['SK_ID_CURR'].astype('category')
+    df['SK_ID_CURR'] = df['SK_ID_CURR'].astype('object')
+    #df['TARGET'] = df['TARGET'].astype('category')
+    df['TARGET'] = df['TARGET'].astype(int)
+    df['WALLSMATERIAL_MODE'] = df['WALLSMATERIAL_MODE'].astype('category')
+    df['WEEKDAY_APPR_PROCESS_START'] = df['WEEKDAY_APPR_PROCESS_START'].astype('category')
+    
+    #df['EXT_SOURCE__mean']
+    #df['difference__DAYS_BIRTH__OWN_CAR_AGE']
+    #df['difference__DAYS_BIRTH__DAYS_EMPLOYED']
+    #df['ratio__AMT_CREDIT__AMT_ANNUITY']
+    #df['ratio__AMT_INCOME_TOTAL__AMT_CREDIT']
+    #df['ratio__AMT_CREDIT__AMT_GOODS_PRICE']
+    #df['ratio__DAYS_EMPLOYED__DAYS_BIRTH']
+    #df['ratio__DAYS_ID_PUBLISH__DAYS_BIRTH']
+    #df['ratio__DAYS_LAST_PHONE_CHANGE__DAYS_BIRTH']
+    #df['ratio__DAYS_REGISTRATION__DAYS_BIRTH']
+    
     return df
