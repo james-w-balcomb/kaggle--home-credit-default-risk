@@ -4,15 +4,7 @@
 # In[ ]:
 
 
-#%run NB01-Load.ipynb
-#%run NB02-EDA-MetaData.ipynb
-get_ipython().magic('run NB03-EDA-MetaData-Check.ipynb')
-
-
-# In[ ]:
-
-
-import scipy.stats as stats
+get_ipython().run_line_magic('run', 'NB03-EDA-MetaData-Check.ipynb')
 
 
 # # Convert / Transform Dichotomous Variables
@@ -20,8 +12,8 @@ import scipy.stats as stats
 # In[ ]:
 
 
-categorical_dichotomous_column_names = [
-'CODE_GENDER',
+ds01_categorical_dichotomous_column_names = [
+'CODE_GENDER', # after preliminary manual fix
 'FLAG_CONT_MOBILE',
 'FLAG_DOCUMENT_2',
 'FLAG_DOCUMENT_3',
@@ -55,7 +47,15 @@ categorical_dichotomous_column_names = [
 'REG_CITY_NOT_LIVE_CITY',
 'REG_CITY_NOT_WORK_CITY',
 'REG_REGION_NOT_LIVE_REGION',
-'REG_REGION_NOT_WORK_REGION',
+'REG_REGION_NOT_WORK_REGION'
+]
+
+
+# In[ ]:
+
+
+ds01_nonmodel_column_names = [
+'SK_ID_CURR',
 'TARGET'
 ]
 
@@ -63,7 +63,25 @@ categorical_dichotomous_column_names = [
 # In[ ]:
 
 
-for column_name in categorical_dichotomous_column_names:
+for column_name in sorted(df.columns.tolist()):
+    if df[column_name].nunique() == 2:
+        print(df[column_name].value_counts(dropna=False))
+
+
+# In[ ]:
+
+
+tmp_column_names = list()
+for column_name in sorted(df.columns.tolist()):
+    if df[column_name].nunique() == 2:
+        tmp_column_names.append(column_name)
+print(sorted(list(set(tmp_column_names) - set(ds01_categorical_dichotomous_column_names))))
+
+
+# In[ ]:
+
+
+for column_name in ds01_categorical_dichotomous_column_names:
     if df[column_name].nunique() != 2:
         print(df[column_name].value_counts(dropna=False))
 
@@ -71,7 +89,7 @@ for column_name in categorical_dichotomous_column_names:
 # In[ ]:
 
 
-for column_name in categorical_dichotomous_column_names:
+for column_name in ds01_categorical_dichotomous_column_names:
     if set(df[column_name].unique()) != set(['0','1']):
         print(df[column_name].value_counts(dropna=False))
 
@@ -195,7 +213,7 @@ df['FLAG_OWN_REALTY'] = df['FLAG_OWN_REALTY'].astype(str)
 # In[ ]:
 
 
-for column_name in categorical_dichotomous_column_names:
+for column_name in ds01_categorical_dichotomous_column_names:
     if column_name == 'TARGET':
         continue
     df_crosstab = pd.crosstab(index=df['TARGET'], columns=df[column_name])
