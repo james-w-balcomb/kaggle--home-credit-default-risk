@@ -3,6 +3,9 @@
 import numpy
 import pandas
 
+from pandas.core.frame import DataFrame
+from pandas.core.series import Series
+
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
 # https://datascience.stackexchange.com/questions/29671/how-to-count-occurrences-of-values-within-specific-range-by-row
 
@@ -306,4 +309,113 @@ def get_score_lightgbm(df, usecols, params, dropcols=[]):
             )
     
     return max(eval['auc-mean'])
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+# ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
+
+def ats_get_dummies(data,
+                    prefix=None,
+                    prefix_sep='_',
+                    dummy_na=False,
+                    sparse=False,
+                    included_column_names=None,
+                    excluded_column_names=None):
+    """
+    Generates columns with flags indicating missing values in the existing columns
+    
+    Parameters
+    ----------
+    data : DataFrame or Series
+    
+    prefix : string, list of strings, or dict of strings, default None
+    prefix_sep : string, default '_'
+    dummy_na : bool, default False
+    sparse : bool, default False
+    included_column_names : list-like, default None
+    excluded_column_names : list-like, default None
+    
+    Returns
+    -------
+    ats_df_dummies : DataFrame
+    """
+    
+    ats_df_dummies = pandas.DataFrame()
+    
+    if isinstance(data, DataFrame):
+        
+        if included_column_names is None:
+            if excluded_column_names is not None:
+                columns_to_encode = list(set(data.select_dtypes(include=['object', 'category']).columns) - set(excluded_column_names))
+            else:
+                columns_to_encode = list(set(data.select_dtypes(include=['object', 'category']).columns))
+        else:
+            if excluded_column_names is not None:
+                columns_to_encode = list(set(included_column_names) - set(excluded_column_names))
+            else:
+                columns_to_encode = list(set(included_column_names))
+        
+        for column_name in columns_to_encode:
+            if(data[column_name].dtype == pandas.np.number):
+                columns_to_encode.remove(column_name)
+            elif data[column_name].dtype.name == 'category':
+                if data[column_name].cat.ordered:
+                    columns_to_encode.remove(column_name)
+        
+        columns_to_encode = sorted(columns_to_encode)
+        
+        #TODO(JamesBalcomb): sanitize strings for column names
+        # # Remove all the spaces in python
+        # data[column_name].replace(" ", "")
+        # my_string = re.sub('[^0-9a-zA-Z]+', '*', my_string)
+        # this will perform slightly quicker if you pre-compile the regex, e.g.,
+        # regex = re.compile('[^0-9a-zA-Z]+')
+        # regex.sub('*', my_string)        
+        
+        for column_name in columns_to_encode:
+            #print('column_name: ' + column_name)
+            #print('dtype: ')
+            #print(data[column_name].dtype)
+            #print(data.groupby([column_name]))
+            #print(data.groupby([column_name]).size())
+            #print(data.groupby([column_name]).size().idxmax())
+            #print('pandas.get_dummies: ' + column_name)
+            dummy = pandas.get_dummies(data[column_name], prefix=column_name, prefix_sep='__', dummy_na=False, columns=None, sparse=False, drop_first=False)
+            
+            ats_df_dummies = pandas.concat([ats_df_dummies, dummy], axis=1)
+            
+            # drop the most frequent value for the reference level
+            dropped_column_name = column_name + '__' + str(data.groupby([column_name]).size().idxmax())
+            #TODO(JamesBalcomb): TypeError: must be str, not numpy.int64
+            ats_df_dummies.drop(dropped_column_name, axis=1, inplace=True)
+        
+        return ats_df_dummies
+    
+    elif isinstance(data, Series):
+        if(data.dtype == pandas.np.number):
+            return ats_df_dummies
+        elif data.dtype.name == 'category':
+            if data.cat.ordered:
+                return ats_df_dummies
+        else:
+            dummy = pandas.get_dummies(data,
+                                   prefix=data.name,
+                                   prefix_sep='__',
+                                   dummy_na=False,
+                                   columns=None,
+                                   sparse=False,
+                                   drop_first=False)
+            
+            ats_df_dummies = pandas.concat([ats_df_dummies, dummy], axis=1)
+            
+            # drop the most frequent value for the reference level
+            print(data.name)
+            print(data.value_counts())
+            print(data.value_counts().index[0])
+            dropped_column_name = data.name + '__' + data.value_counts().index[0]
+            ats_df_dummies.drop(dropped_column_name, axis=1, inplace=True)
+            
+    else:
+        return ats_df_dummies
+    
+    return ats_df_dummies
 # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### # ### #
