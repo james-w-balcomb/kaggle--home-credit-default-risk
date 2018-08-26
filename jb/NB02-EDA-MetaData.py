@@ -302,6 +302,8 @@ df_dtype_category_column_names
 # In[ ]:
 
 
+string = "wallawalla 101"
+
 try:
     i = float(str)
 except (ValueError, TypeError):
@@ -310,7 +312,7 @@ except (ValueError, TypeError):
 print(string.isdecimal())
 
 def isNumeric(s):
-return s.isnumeric()
+    return s.isnumeric()
 
 print(isNumeric("1234124"))
 
@@ -323,11 +325,13 @@ else:
 # Incrementing the counter if a numeric character is found
 # And adding the character to new string if not numeric
 # Finally printing the count and the newstring
+count = int()
+newstring1 = str()
 for a in string:
     if (a.isnumeric()) == True:
-        count+= 1
+        count += 1
     else:
-        newstring1+= a
+        newstring1 += a
 print(count)
 print(newstring1)
 
