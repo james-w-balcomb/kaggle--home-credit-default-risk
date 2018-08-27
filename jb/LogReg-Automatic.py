@@ -1,123 +1,18 @@
 #%%
 
-import collections
-import gc
-import IPython
-import lightgbm as lgb
 import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+import numpy
 import os
-import plotly.graph_objs as go
-import plotly.plotly as py
+import pandas
 import random 
-#import seaborn as sb
-import seaborn as sns
-#import seaborn as snss
-#import scipy
-import scipy as sp
 import sklearn
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
-import sys
-import warnings
-
-from datetime import date
-from IPython.display import HTML
-from lightgbm import LGBMClassifier
-from lightgbm import plot_importance
-from pandas import DataFrame
-from pandas import Series
-from patsy import dmatrices
-from plotly import tools
-from plotly.offline import init_notebook_mode
-from plotly.offline import iplot
-from pylab import rcParams
-from random import choice
-from random import choices # Python 3.6+
-from random import sample
-from sklearn import datasets
-from sklearn import model_selection
-from sklearn import metrics
-from sklearn import preprocessing
-#from sklearn.cross_validation import train_test_split
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import average_precision_score
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import precision_recall_curve
-from sklearn.metrics import roc_auc_score
-from sklearn.metrics import roc_curve
-from sklearn.model_selection import KFold
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import Imputer
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler
-from statsmodels.stats.outliers_influence import variance_inflation_factor
-from xgboost import XGBClassifier
-from wordcloud import WordCloud
-
-init_notebook_mode(connected=True)
-plt.rcParams.update({'figure.max_open_warning': 200})
-# Suppress warnings
-warnings.filterwarnings("ignore")
-
-# In a notebook environment, display the plots inline
-#%matplotlib inline
-# Set some parameters to apply to all plots. These can be overridden in each plot if desired.
-# Plot size to 14" x 7"
-matplotlib.rc('figure', figsize = (14, 7))
-# Font size to 14
-matplotlib.rc('font', size = 14)
-# Do not display top and right frame lines
-matplotlib.rc('axes.spines', top = False, right = False)
-# Remove grid lines
-matplotlib.rc('axes', grid = False)
-# Set backgound color to white
-matplotlib.rc('axes', facecolor = 'white')
-# emulate the aesthetics of ggplot (a popular plotting package for R)
-matplotlib.style.use('ggplot')
-
-np.set_printoptions(threshold=np.nan)
-np.set_printoptions(suppress=True, formatter={'float_kind':'{:f}'.format})
-
-#import C:/Development/kaggle--home-credit-default-risk/rand_jitter
-#import C:/Development/kaggle--home-credit-default-risk/draw_feature_distribution
-
-# sys.path.insert(0, 'C:/Development/kaggle--home-credit-default-risk/') # ~= sys.path.prepend
-sys.path.append('C:/Development/kaggle--home-credit-default-risk/')
-# import rand_jitter
-# import draw_feature_distribution
-##from rand_jitter import * # NOTE: added directly to draw_feature_distribution_v2
-# from draw_feature_distribution import *
-# from draw_feature_distribution_v1 import *
-#from draw_feature_distribution_v2 import *
-
-# C:\Users\jbalcomb\Anaconda3\lib\site-packages\statsmodels\compat\pandas.py:56: FutureWarning:
-# The pandas.core.datetools module is deprecated and will be removed in a future version. Please use the pandas.tseries module instead.
-
-#%%
-
-print("Python version: {}".format(sys.version))
-print("pandas version: {}".format(pd.__version__))
-print("NumPy version: {}".format(np.__version__))
-print("SciPy version: {}".format(sp.__version__))
-print("scikit-learn version: {}".format(sklearn.__version__))
-print("matplotlib version: {}".format(matplotlib.__version__))
-print("IPython version: {}".format(IPython.__version__))
-print()
 
 
 #%%
 
 random_seed = 1234567890
 random.seed(random_seed)
-np.random.seed(random_seed)
+numpy.random.seed(random_seed)
 
 
 #%%
@@ -169,7 +64,7 @@ print()
 print('Importing data file...')
 print()
 
-df = pd.read_table(data_file_path + data_file_name, sep=',')
+df = pandas.read_table(data_file_path + data_file_name, sep=',')
 
 
 #%%
@@ -311,16 +206,16 @@ df.loc[df.SK_ID_CURR == 141289, 'CODE_GENDER'] = 'F'
 df.loc[df.SK_ID_CURR == 319880, 'CODE_GENDER'] = 'F'
 df.loc[df.SK_ID_CURR == 196708, 'CODE_GENDER'] = 'F'
 df.loc[df.SK_ID_CURR == 144669, 'CODE_GENDER'] = 'M'
-df['CODE_GENDER'] = pd.Series(np.where(df['CODE_GENDER'].values == 'M', 1, 0), df.index)
+df['CODE_GENDER'] = pandas.Series(numpy.where(df['CODE_GENDER'].values == 'M', 1, 0), df.index)
 
-df['DAYS_EMPLOYED'] = df['DAYS_EMPLOYED'].replace(365243, np.nan)
+df['DAYS_EMPLOYED'] = df['DAYS_EMPLOYED'].replace(365243, numpy.nan)
 
 #df['EMERGENCYSTATE_MODE'].add_categories('MISSING')
 df['EMERGENCYSTATE_MODE'] = df['EMERGENCYSTATE_MODE'].astype('object')
 df['EMERGENCYSTATE_MODE'].fillna('MISSING', inplace=True)
-df['EMERGENCYSTATE_MODE__MISSING'] = pd.Series(np.where(df['EMERGENCYSTATE_MODE'].values == 'MISSING', 1, 0), df.index)
+df['EMERGENCYSTATE_MODE__MISSING'] = pandas.Series(numpy.where(df['EMERGENCYSTATE_MODE'].values == 'MISSING', 1, 0), df.index)
 #df['EMERGENCYSTATE_MODE__Yes'] = pd.Series(np.where(df['EMERGENCYSTATE_MODE'].values == 'Yes', 1, 0), df.index)
-df['EMERGENCYSTATE_MODE'] = pd.Series(np.where(df['EMERGENCYSTATE_MODE'].values == 'Yes', 1, 0), df.index)
+df['EMERGENCYSTATE_MODE'] = pandas.Series(numpy.where(df['EMERGENCYSTATE_MODE'].values == 'Yes', 1, 0), df.index)
 df['EMERGENCYSTATE_MODE'] = df['EMERGENCYSTATE_MODE'].astype('category')
 
 df['EXT_SOURCE_mean'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
@@ -328,18 +223,18 @@ df['EXT_SOURCE_median'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].m
 
 #df.drop('FLAG_MOBIL', inplace=True)
 
-df['FLAG_OWN_CAR'] = pd.Series(np.where(df['FLAG_OWN_CAR'].values == 'Y', 1, 0), df.index)
+df['FLAG_OWN_CAR'] = pandas.Series(numpy.where(df['FLAG_OWN_CAR'].values == 'Y', 1, 0), df.index)
 
-df['FLAG_OWN_REALTY'] = pd.Series(np.where(df['FLAG_OWN_REALTY'].values == 'Y', 1, 0), df.index)
+df['FLAG_OWN_REALTY'] = pandas.Series(numpy.where(df['FLAG_OWN_REALTY'].values == 'Y', 1, 0), df.index)
 
-df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].replace('XNA', np.nan)
+df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].replace('XNA', numpy.nan)
 df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].astype('object')  
 df['ORGANIZATION_TYPE'].fillna('MISSING', inplace=True)
 df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].astype('category')  
 
 #df.rename(columns={'NAME_CONTRACT_TYPE': 'NAME_CONTRACT_TYPE__Revolving_loans'}, inplace=True)
 #df['NAME_CONTRACT_TYPE__Revolving_loans'] = pd.Series(np.where(df['NAME_CONTRACT_TYPE__Revolving_loans'].values == 'Revolving loans', 1, 0), df.index)
-df['NAME_CONTRACT_TYPE'] = pd.Series(np.where(df['NAME_CONTRACT_TYPE'].values == 'Revolving loans', 1, 0), df.index)
+df['NAME_CONTRACT_TYPE'] = pandas.Series(numpy.where(df['NAME_CONTRACT_TYPE'].values == 'Revolving loans', 1, 0), df.index)
 
 
 #%%
@@ -547,7 +442,7 @@ print()
 print('Splitting Trainging and Testing data-sets...')
 print()
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=random_seed)
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
 
 
 #%%
@@ -561,7 +456,7 @@ print()
 print('Instantiating LogisticRegression class...')
 print()
 
-logreg = LogisticRegression(
+logreg = sklearn.linear_model.LogisticRegression(
         penalty='l2',
         dual=False,
         tol=0.0001,
@@ -594,10 +489,17 @@ logreg.fit(X_train, y_train, sample_weight=None)
 #%%
 
 print()
-print('Instantiating LogRegModel class...')
+print('Instantiating the LogRegModel class...')
 print()
 
 log_reg_model = LogRegModel()
+
+
+#%%
+
+log_reg_model.coefficients = logreg.coef_
+log_reg_model.intercept = logreg.intercept_
+log_reg_model.number_of_iterations = logreg.n_iter_
 
 
 #%%
@@ -613,35 +515,34 @@ log_reg_model.params = logreg.get_params()
 
 print()
 print('Logistic Regression Estimator/Model Parameters')
-print(logreg.get_params())
-print()
+#print(logreg.get_params())
 print(log_reg_model.params)
 print()
 
 
 #%%
 
-logreg.score(X_train, y_train, sample_weight=None)
-logreg.score(X_test, y_test, sample_weight=None)
+log_reg_model.score_train = logreg.score(X_train, y_train, sample_weight=None)
+log_reg_model.score_test = logreg.score(X_test, y_test, sample_weight=None)
 
 
 #%%
 
 # Make predictions
-X_test_predicted_class_labels = logreg.predict(X_test)
-df_X_test_predicted_class_labels = pd.DataFrame(X_test_predicted_class_labels)
-df_X_test_predicted_class_labels.columns = ['Late_Payments']
+log_reg_model.X_test_predicted_class_labels = logreg.predict(X_test)
+log_reg_model.df_X_test_predicted_class_labels = pandas.DataFrame(log_reg_model.X_test_predicted_class_labels)
+log_reg_model.df_X_test_predicted_class_labels.columns = ['Late_Payments']
 
-X_test_predicted_probability_estimates = logreg.predict_proba(X_test)
-df_X_test_predicted_probability_estimates = pd.DataFrame(X_test_predicted_probability_estimates)
-df_X_test_predicted_probability_estimates.columns = ['OnTime_Payments_Probability', 'Late_Payments_Probability']
+log_reg_model.X_test_predicted_probability_estimates = logreg.predict_proba(X_test)
+log_reg_model.df_X_test_predicted_probability_estimates = pandas.DataFrame(log_reg_model.X_test_predicted_probability_estimates)
+log_reg_model.df_X_test_predicted_probability_estimates.columns = ['OnTime_Payments_Probability', 'Late_Payments_Probability']
 
-X_test_predicted_log_of_probability_estimates = logreg.predict_log_proba(X_test)
-df_X_test_predicted_log_of_probability_estimates = pd.DataFrame(X_test_predicted_log_of_probability_estimates)
+log_reg_model.X_test_predicted_log_of_probability_estimates = logreg.predict_log_proba(X_test)
+log_reg_model.df_X_test_predicted_log_of_probability_estimates = pandas.DataFrame(log_reg_model.X_test_predicted_log_of_probability_estimates)
 #df_X_test_predicted_log_of_probability_estimates.columns = ['']
 
-X_test_predicted_confidence_scores = logreg.decision_function(X_test)
-df_X_test_predicted_confidence_scores = pd.DataFrame(X_test_predicted_confidence_scores)
+log_reg_model.X_test_predicted_confidence_scores = logreg.decision_function(X_test)
+log_reg_model.df_X_test_predicted_confidence_scores = pandas.DataFrame(log_reg_model.X_test_predicted_confidence_scores)
 #df_X_test_predicted_confidence_scores.columns = ['']
 
 
@@ -651,123 +552,33 @@ df_X_test_predicted_confidence_scores = pd.DataFrame(X_test_predicted_confidence
 #pd.crosstab(X_train['FLAG_CONT_MOBILE'], df_X_test_predicted_probability_estimates.ix[:, 'Late_Payments_Probability'])
 
 # Generate table of predictions vs actual
-pd.crosstab(X_test_predicted_class_labels, y_test)
+pandas.crosstab(log_reg_model.X_test_predicted_class_labels, y_test)
 
 print('Accuracy of logistic regression classifier on test set: {:.5f}'.format(logreg.score(X_test, y_test)))
 
 # Confusion Matrix
-confusion_matrix = confusion_matrix(y_test, X_test_predicted_class_labels)
-print(confusion_matrix)
-
 # The confusion matrix below is not visually super informative or visually appealing.
-cm = metrics.confusion_matrix(y_test, X_test_predicted_class_labels)
-print(cm)
+log_reg_model.confusion_matrix = sklearn.metrics.confusion_matrix(y_test, log_reg_model.X_test_predicted_class_labels)
+print(log_reg_model.confusion_matrix)
 
 # Compute precision, recall, F-measure and support
-print(classification_report(y_test, X_test_predicted_class_labels))
+print(sklearn.metrics.classification_report(y_test, log_reg_model.X_test_predicted_class_labels))
 
 # ROC Curve
 #logit_roc_auc = roc_auc_score(y_test, logreg.predict_proba(X_test))
-logit_roc_auc = roc_auc_score(y_test, X_test_predicted_class_labels)
-print('logit_roc_auc: ', logit_roc_auc)
+log_reg_model.logit_roc_auc = sklearn.metrics.roc_auc_score(y_test, log_reg_model.X_test_predicted_class_labels)
+print('logit_roc_auc: ', log_reg_model.logit_roc_auc)
 
-fpr, tpr, thresholds = roc_curve(y_test, X_test_predicted_probability_estimates[:,1])
+log_reg_model.fpr, log_reg_model.tpr, log_reg_model.thresholds = sklearn.metrics.roc_curve(y_test, log_reg_model.X_test_predicted_probability_estimates[:,1])
 #print('fpr, tpr, thresholds: ', fpr, tpr, thresholds)
-plt.figure()
-plt.plot(fpr, tpr, label='Logistic Regression (AUC = %0.5f)' % logit_roc_auc)
-plt.plot([0, 1], [0, 1],'r--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver Operating Characteristic')
-plt.legend(loc="lower right")
-plt.savefig('Log_ROC')
-plt.show()
-
-
-#%%
-
-# http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html
-# sklearn.linear_model.LogisticRegression
-# class sklearn.linear_model.LogisticRegression
-#   (
-#       penalty=’l2’,
-#       dual=False,
-#       tol=0.0001,
-#       C=1.0,
-#       fit_intercept=True,
-#       intercept_scaling=1,
-#       class_weight=None,
-#       random_state=None,
-#       solver=’liblinear’,
-#       max_iter=100,
-#       multi_class=’ovr’,
-#       verbose=0,
-#       warm_start=False,
-#       n_jobs=1
-#   )
-# Logistic Regression (aka logit, MaxEnt) classifier.
-# This class implements regularized logistic regression using the ‘liblinear’ library, ‘newton-cg’, ‘sag’ and ‘lbfgs’ solvers.
-# It can handle both dense and sparse input.
-# Use C-ordered arrays or CSR matrices containing 64-bit floats for optimal performance;
-#   any other input format will be converted (and copied).
-#
-# Parameters:	
-#
-#   penalty : str, ‘l1’ or ‘l2’, default: ‘l2’
-#       Used to specify the norm used in the penalization. The ‘newton-cg’, ‘sag’ and ‘lbfgs’ solvers support only l2 penalties.
-#       New in version 0.19: l1 penalty with SAGA solver (allowing ‘multinomial’ + L1)
-#   dual : bool, default: False
-#       Dual or primal formulation. Dual formulation is only implemented for l2 penalty with liblinear solver. Prefer dual=False when n_samples > n_features.
-#   tol : float, default: 1e-4
-#       Tolerance for stopping criteria.
-#   C : float, default: 1.0
-#       Inverse of regularization strength; must be a positive float. Like in support vector machines, smaller values specify stronger regularization.
-#   fit_intercept : bool, default: True
-#       Specifies if a constant (a.k.a. bias or intercept) should be added to the decision function.
-#   intercept_scaling : float, default 1.
-#       Useful only when the solver ‘liblinear’ is used and self.fit_intercept is set to True. In this case, x becomes [x, self.intercept_scaling], i.e. a “synthetic” feature with constant value equal to intercept_scaling is appended to the instance vector. The intercept becomes intercept_scaling * synthetic_feature_weight.
-#       Note! the synthetic feature weight is subject to l1/l2 regularization as all other features. To lessen the effect of regularization on synthetic feature weight (and therefore on the intercept) intercept_scaling has to be increased.
-#   class_weight : dict or ‘balanced’, default: None
-#       Weights associated with classes in the form {class_label: weight}. If not given, all classes are supposed to have weight one.
-#       The “balanced” mode uses the values of y to automatically adjust weights inversely proportional to class frequencies in the input data as n_samples / (n_classes * np.bincount(y)).
-#       Note that these weights will be multiplied with sample_weight (passed through the fit method) if sample_weight is specified.
-#       New in version 0.17: class_weight=’balanced’
-#   random_state : int, RandomState instance or None, optional, default: None
-#       The seed of the pseudo random number generator to use when shuffling the data. If int, random_state is the seed used by the random number generator; If RandomState instance, random_state is the random number generator; If None, the random number generator is the RandomState instance used by np.random. Used when solver == ‘sag’ or ‘liblinear’.
-#   solver : {‘newton-cg’, ‘lbfgs’, ‘liblinear’, ‘sag’, ‘saga’},
-#       default: ‘liblinear’ Algorithm to use in the optimization problem.
-#       For small datasets, ‘liblinear’ is a good choice, whereas ‘sag’ and ‘saga’ are faster for large ones.
-#       For multiclass problems, only ‘newton-cg’, ‘sag’, ‘saga’ and ‘lbfgs’ handle multinomial loss; ‘liblinear’ is limited to one-versus-rest schemes. ‘newton-cg’, ‘lbfgs’ and ‘sag’ only handle L2 penalty, whereas ‘liblinear’ and ‘saga’ handle L1 penalty.
-#       Note that ‘sag’ and ‘saga’ fast convergence is only guaranteed on features with approximately the same scale. You can preprocess the data with a scaler from sklearn.preprocessing.
-#       New in version 0.17: Stochastic Average Gradient descent solver.
-#       New in version 0.19: SAGA solver.
-#   max_iter : int, default: 100
-#       Useful only for the newton-cg, sag and lbfgs solvers. Maximum number of iterations taken for the solvers to converge.
-#   multi_class : str, {‘ovr’, ‘multinomial’}, default: ‘ovr’
-#       Multiclass option can be either ‘ovr’ or ‘multinomial’. If the option chosen is ‘ovr’, then a binary problem is fit for each label. Else the loss minimised is the multinomial loss fit across the entire probability distribution. Does not work for liblinear solver.
-#       New in version 0.18: Stochastic Average Gradient descent solver for ‘multinomial’ case.
-#   verbose : int, default: 0
-#       For the liblinear and lbfgs solvers set verbose to any positive number for verbosity.
-#   warm_start : bool, default: False
-#       When set to True, reuse the solution of the previous call to fit as initialization, otherwise, just erase the previous solution. Useless for liblinear solver.
-#       New in version 0.17: warm_start to support lbfgs, newton-cg, sag, saga solvers.
-#   n_jobs : int, default: 1
-#       Number of CPU cores used when parallelizing over classes if multi_class=’ovr’”. This parameter is ignored when the ``solver``is set to ‘liblinear’ regardless of whether ‘multi_class’ is specified or not. If given a value of -1, all cores are used.
-#
-#
-# Attributes:	
-#
-#   coef_ : array, shape (1, n_features) or (n_classes, n_features)
-#       Coefficient of the features in the decision function.
-#       coef_ is of shape (1, n_features) when the given problem is binary.
-#   intercept_ : array, shape (1,) or (n_classes,)
-#    Intercept (a.k.a. bias) added to the decision function.
-#       If fit_intercept is set to False, the intercept is set to zero. intercept_ is of shape(1,) when the problem is binary.
-#   n_iter_ : array, shape (n_classes,) or (1, )
-#       Actual number of iterations for all classes. If binary or multinomial, it returns only 1 element. For liblinear solver, only the maximum number of iteration across all classes is given.
-#
-#
-#
-# http://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+matplotlib.pyplot.figure()
+matplotlib.pyplot.plot(log_reg_model.fpr, log_reg_model.tpr, label='Logistic Regression (AUC = %0.5f)' % log_reg_model.logit_roc_auc)
+matplotlib.pyplot.plot([0, 1], [0, 1],'r--')
+matplotlib.pyplot.xlim([0.0, 1.0])
+matplotlib.pyplot.ylim([0.0, 1.05])
+matplotlib.pyplot.xlabel('False Positive Rate')
+matplotlib.pyplot.ylabel('True Positive Rate')
+matplotlib.pyplot.title('Receiver Operating Characteristic')
+matplotlib.pyplot.legend(loc="lower right")
+matplotlib.pyplot.savefig('Log_ROC')
+matplotlib.pyplot.show()
