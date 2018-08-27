@@ -391,12 +391,38 @@ df['EXT_SOURCE_3'] = df['EXT_SOURCE_3'].fillna((df['EXT_SOURCE_3'].mean()))
 print(df.head())
 
 
+#%% 
+
+dependent_column_name = 'TARGET'
+
+
 #%%
+
+independent_column_names = [
+        'CODE_GENDER',
+        'DAYS_EMPLOYED',
+        'EMERGENCYSTATE_MODE',
+        'EXT_SOURCE_1',
+        'EXT_SOURCE_2',
+        'EXT_SOURCE_3',
+        'FLAG_CONT_MOBILE',
+        'FLAG_EMAIL',
+        'FLAG_EMP_PHONE',
+        'FLAG_OWN_CAR',
+        'FLAG_OWN_REALTY',
+        'FLAG_PHONE',
+        'FLAG_WORK_PHONE',
+        'NAME_CONTRACT_TYPE'
+        ]
+
+
+#%%
+    
 class LogRegModel(object):
     pass
 
 
-#%%
+#%% 
 
 print()
 print('Instantiating the LogRegModel class...')
@@ -407,34 +433,17 @@ log_reg_model_01 = LogRegModel()
 
 #%%
 
-dependent_column_name = 'TARGET'
-
-independent_column_names = [
-'CODE_GENDER',
-'DAYS_EMPLOYED',
-'EMERGENCYSTATE_MODE',
-'EXT_SOURCE_1',
-'EXT_SOURCE_2',
-'EXT_SOURCE_3',
-'FLAG_CONT_MOBILE',
-'FLAG_EMAIL',
-'FLAG_EMP_PHONE',
-'FLAG_OWN_CAR',
-'FLAG_OWN_REALTY',
-'FLAG_PHONE',
-'FLAG_WORK_PHONE',
-'NAME_CONTRACT_TYPE'
-]
-
 log_reg_model_01.dependent_column_name = dependent_column_name
 log_reg_model_01.independent_column_names = independent_column_names
 
 
 #%%
 
-y = df[dependent_column_name]
+#y = df[dependent_column_name]
+#y = df[log_reg_model_01.dependent_column_name]
 
-X = df.loc[:,independent_column_names]
+#X = df.loc[:,independent_column_names]
+#X = df.loc[:,log_reg_model_01.independent_column_names]
 
 
 #%%
@@ -443,7 +452,37 @@ print()
 print('Splitting Trainging and Testing data-sets...')
 print()
 
-X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
+#X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
+        df.loc[:,log_reg_model_01.independent_column_names],
+        df[log_reg_model_01.dependent_column_name],
+        test_size=0.3,
+        random_state=random_seed
+        )
+
+
+#%%
+
+log_reg_model_01.logistic_regression_parameters = {
+        'penalty':'l2',
+        'dual':False,
+        'tol':0.0001,
+        #'C':1.0,
+        'C':20.0,
+        'fit_intercept':True,
+        'intercept_scaling':1,
+        #'class_weight':None,
+        'class_weight':'balanced',
+        #'random_state':None,
+        'random_state':random_seed,
+        'solver':'liblinear',
+        'max_iter':100,
+        'multi_class':'ovr',
+        #'verbose':0,
+        'verbose':1,
+        'warm_start':False,
+        'n_jobs':1
+        }
 
 
 #%%
@@ -457,26 +496,8 @@ print()
 print('Instantiating LogisticRegression class...')
 print()
 
-logreg = sklearn.linear_model.LogisticRegression(
-        penalty='l2',
-        dual=False,
-        tol=0.0001,
-        #C=1.0,
-        C=20.0,
-        fit_intercept=True,
-        intercept_scaling=1,
-        #class_weight=None,
-        class_weight='balanced',
-        #random_state=None,
-        random_state=random_seed,
-        solver='liblinear',
-        max_iter=100,
-        multi_class='ovr',
-        #verbose=0,
-        verbose=1,
-        warm_start=False,
-        n_jobs=1
-        )
+logreg = sklearn.linear_model.LogisticRegression(**log_reg_model_01.logistic_regression_parameters)
+
 
 #%% 
 
@@ -614,9 +635,11 @@ log_reg_model_02.independent_column_names = independent_column_names
 
 #%%
 
-y = df[dependent_column_name]
+#y = df[dependent_column_name]
+#y = df[log_reg_model_02.dependent_column_name]
 
-X = df.loc[:,independent_column_names]
+#X = df.loc[:,independent_column_names]
+#X = df.loc[:,log_reg_model_02.independent_column_names]
 
 
 #%%
@@ -625,7 +648,37 @@ print()
 print('Splitting Trainging and Testing data-sets...')
 print()
 
-X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
+#X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
+        df.loc[:,log_reg_model_02.independent_column_names],
+        df[log_reg_model_02.dependent_column_name],
+        test_size=0.3,
+        random_state=random_seed
+        )
+
+
+#%% 
+
+log_reg_model_02.logistic_regression_parameters = {
+        'penalty':'l2',
+        'dual':False,
+        'tol':0.0001,
+        #'C':1.0,
+        'C':20.0,
+        'fit_intercept':True,
+        'intercept_scaling':1,
+        #'class_weight':None,
+        'class_weight':'balanced',
+        #'random_state':None,
+        'random_state':random_seed,
+        'solver':'liblinear',
+        'max_iter':100,
+        'multi_class':'ovr',
+        #'verbose':0,
+        'verbose':1,
+        'warm_start':False,
+        'n_jobs':1
+        }
 
 
 #%%
@@ -639,26 +692,8 @@ print()
 print('Instantiating LogisticRegression class...')
 print()
 
-logreg = sklearn.linear_model.LogisticRegression(
-        penalty='l2',
-        dual=False,
-        tol=0.0001,
-        #C=1.0,
-        C=20.0,
-        fit_intercept=True,
-        intercept_scaling=1,
-        #class_weight=None,
-        class_weight='balanced',
-        #random_state=None,
-        random_state=random_seed,
-        solver='liblinear',
-        max_iter=100,
-        multi_class='ovr',
-        #verbose=0,
-        verbose=1,
-        warm_start=False,
-        n_jobs=1
-        )
+logreg = sklearn.linear_model.LogisticRegression(**log_reg_model_02.logistic_regression_parameters)
+
 
 #%% 
 
