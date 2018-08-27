@@ -6,6 +6,10 @@ import os
 import pandas
 import random 
 import sklearn
+from sklearn import linear_model
+#from sklearn.linear_model import LogisticRegression
+from sklearn import model_selection
+#from sklearn.model_selection import train_test_split
 
 
 #%%
@@ -357,45 +361,17 @@ df['NAME_CONTRACT_TYPE'] = pandas.Series(numpy.where(df['NAME_CONTRACT_TYPE'].va
 
 
 #%%
-class LogRegModel(object):
-    pass
-
-
-#%% 
-
-y = df['TARGET']
-
-X = df.loc[:,[
-'CODE_GENDER',
-'DAYS_EMPLOYED',
-'EMERGENCYSTATE_MODE',
-'EXT_SOURCE_1',
-'EXT_SOURCE_2',
-'EXT_SOURCE_3',
-'FLAG_CONT_MOBILE',
-'FLAG_EMAIL',
-'FLAG_EMP_PHONE',
-'FLAG_OWN_CAR',
-'FLAG_OWN_REALTY',
-'FLAG_PHONE',
-'FLAG_WORK_PHONE',
-'NAME_CONTRACT_TYPE'
-#'ORGANIZATION_TYPE'
-]]
-
-
-#%%
 
 print('Imputing Missing Values...')
 print()
 
-#X.isnull().any()
+#df.isnull().any()
 
-X['DAYS_EMPLOYED'] = X['DAYS_EMPLOYED'].fillna((X['DAYS_EMPLOYED'].mean()))
+df['DAYS_EMPLOYED'] = df['DAYS_EMPLOYED'].fillna((df['DAYS_EMPLOYED'].mean()))
 
-X['EXT_SOURCE_1'] = X['EXT_SOURCE_1'].fillna((X['EXT_SOURCE_1'].mean()))
-X['EXT_SOURCE_2'] = X['EXT_SOURCE_2'].fillna((X['EXT_SOURCE_2'].mean()))
-X['EXT_SOURCE_3'] = X['EXT_SOURCE_3'].fillna((X['EXT_SOURCE_3'].mean()))
+df['EXT_SOURCE_1'] = df['EXT_SOURCE_1'].fillna((df['EXT_SOURCE_1'].mean()))
+df['EXT_SOURCE_2'] = df['EXT_SOURCE_2'].fillna((df['EXT_SOURCE_2'].mean()))
+df['EXT_SOURCE_3'] = df['EXT_SOURCE_3'].fillna((df['EXT_SOURCE_3'].mean()))
 
 #X = X.fillna(X.mean())
 
@@ -412,28 +388,53 @@ X['EXT_SOURCE_3'] = X['EXT_SOURCE_3'].fillna((X['EXT_SOURCE_3'].mean()))
 
 #%%
 
-print(X.head())
+print(df.head())
+
+
+#%%
+class LogRegModel(object):
+    pass
 
 
 #%%
 
-# Test for NaN, infinity, or values to large for dtype float64
-#> ValueError: Input contains NaN, infinity or a value too large for dtype('float64').
+print()
+print('Instantiating the LogRegModel class...')
+print()
 
-#X.isnull().any()
-
-#print(X.isinf().any())
+log_reg_model_01 = LogRegModel()
 
 
 #%%
 
-#print('Standardizing Features...')
-#print()
+dependent_column_name = 'TARGET'
 
-#scaler = StandardScaler()
-#X = scaler.fit_transform(X)
+independent_column_names = [
+'CODE_GENDER',
+'DAYS_EMPLOYED',
+'EMERGENCYSTATE_MODE',
+'EXT_SOURCE_1',
+'EXT_SOURCE_2',
+'EXT_SOURCE_3',
+'FLAG_CONT_MOBILE',
+'FLAG_EMAIL',
+'FLAG_EMP_PHONE',
+'FLAG_OWN_CAR',
+'FLAG_OWN_REALTY',
+'FLAG_PHONE',
+'FLAG_WORK_PHONE',
+'NAME_CONTRACT_TYPE'
+]
 
-#print(pd.DataFrame(X).head())
+log_reg_model_01.dependent_column_name = dependent_column_name
+log_reg_model_01.independent_column_names = independent_column_names
+
+
+#%%
+
+y = df[dependent_column_name]
+
+X = df.loc[:,independent_column_names]
 
 
 #%%
@@ -488,91 +489,95 @@ logreg.fit(X_train, y_train, sample_weight=None)
 
 #%%
 
-print()
-print('Instantiating the LogRegModel class...')
-print()
+log_reg_model_01.coefficients = logreg.coef_
+log_reg_model_01.intercept = logreg.intercept_
+log_reg_model_01.number_of_iterations = logreg.n_iter_
 
-log_reg_model = LogRegModel()
+log_reg_model_01.params = logreg.get_params()
 
+log_reg_model_01.X_test_predicted_class_labels = logreg.predict(X_test)
+log_reg_model_01.X_test_predicted_log_probability_estimates = logreg.predict_log_proba(X_test)
+log_reg_model_01.X_test_predicted_probability_estimates = logreg.predict_proba(X_test)
+log_reg_model_01.X_test_predicted_confidence_scores = logreg.decision_function(X_test)
 
-#%%
-
-log_reg_model.coefficients = logreg.coef_
-log_reg_model.intercept = logreg.intercept_
-log_reg_model.number_of_iterations = logreg.n_iter_
-
-
-#%%
-
-print()
-print('Assigning log_reg_model.params via a call to the LogisticRegression.get_params method...')
-print()
-
-log_reg_model.params = logreg.get_params()
+log_reg_model_01.score_train = logreg.score(X_train, y_train, sample_weight=None)
+log_reg_model_01.score_test = logreg.score(X_test, y_test, sample_weight=None)
+log_reg_model_01.confusion_matrix = sklearn.metrics.confusion_matrix(y_test, log_reg_model_01.X_test_predicted_class_labels)
+log_reg_model_01.classification_report = sklearn.metrics.classification_report(y_test, log_reg_model_01.X_test_predicted_class_labels)
+log_reg_model_01.logit_roc_auc = sklearn.metrics.roc_auc_score(y_test, log_reg_model_01.X_test_predicted_class_labels)
+log_reg_model_01.fpr, log_reg_model_01.tpr, log_reg_model_01.thresholds = sklearn.metrics.roc_curve(y_test, log_reg_model_01.X_test_predicted_probability_estimates[:,1])
 
 
 #%%
 
-print()
-print('Logistic Regression Estimator/Model Parameters')
-#print(logreg.get_params())
-print(log_reg_model.params)
-print()
+log_reg_model_01.true_negative_count, log_reg_model_01.false_positive_count, log_reg_model_01.false_negative_count, log_reg_model_01.true_positive_count = log_reg_model_01.confusion_matrix.ravel()
 
 
 #%%
 
-log_reg_model.score_train = logreg.score(X_train, y_train, sample_weight=None)
-log_reg_model.score_test = logreg.score(X_test, y_test, sample_weight=None)
+log_reg_model_01.df_X_test_predicted_class_labels = pandas.DataFrame(log_reg_model_01.X_test_predicted_class_labels)
+log_reg_model_01.df_X_test_predicted_class_labels.columns = ['Late_Payments']
 
+log_reg_model_01.df_X_test_predicted_probability_estimates = pandas.DataFrame(log_reg_model_01.X_test_predicted_probability_estimates)
+log_reg_model_01.df_X_test_predicted_probability_estimates.columns = ['OnTime_Payments_Probability', 'Late_Payments_Probability']
 
-#%%
-
-# Make predictions
-log_reg_model.X_test_predicted_class_labels = logreg.predict(X_test)
-log_reg_model.df_X_test_predicted_class_labels = pandas.DataFrame(log_reg_model.X_test_predicted_class_labels)
-log_reg_model.df_X_test_predicted_class_labels.columns = ['Late_Payments']
-
-log_reg_model.X_test_predicted_probability_estimates = logreg.predict_proba(X_test)
-log_reg_model.df_X_test_predicted_probability_estimates = pandas.DataFrame(log_reg_model.X_test_predicted_probability_estimates)
-log_reg_model.df_X_test_predicted_probability_estimates.columns = ['OnTime_Payments_Probability', 'Late_Payments_Probability']
-
-log_reg_model.X_test_predicted_log_of_probability_estimates = logreg.predict_log_proba(X_test)
-log_reg_model.df_X_test_predicted_log_of_probability_estimates = pandas.DataFrame(log_reg_model.X_test_predicted_log_of_probability_estimates)
+log_reg_model_01.df_X_test_predicted_log_probability_estimates = pandas.DataFrame(log_reg_model_01.X_test_predicted_log_probability_estimates)
 #df_X_test_predicted_log_of_probability_estimates.columns = ['']
 
-log_reg_model.X_test_predicted_confidence_scores = logreg.decision_function(X_test)
-log_reg_model.df_X_test_predicted_confidence_scores = pandas.DataFrame(log_reg_model.X_test_predicted_confidence_scores)
+log_reg_model_01.df_X_test_predicted_confidence_scores = pandas.DataFrame(log_reg_model_01.X_test_predicted_confidence_scores)
 #df_X_test_predicted_confidence_scores.columns = ['']
 
 
 #%%
 
-# Generate table of predictions
-#pd.crosstab(X_train['FLAG_CONT_MOBILE'], df_X_test_predicted_probability_estimates.ix[:, 'Late_Payments_Probability'])
+print(log_reg_model_01.params)
 
-# Generate table of predictions vs actual
-pandas.crosstab(log_reg_model.X_test_predicted_class_labels, y_test)
 
-print('Accuracy of logistic regression classifier on test set: {:.5f}'.format(logreg.score(X_test, y_test)))
+#%%
 
-# Confusion Matrix
-# The confusion matrix below is not visually super informative or visually appealing.
-log_reg_model.confusion_matrix = sklearn.metrics.confusion_matrix(y_test, log_reg_model.X_test_predicted_class_labels)
-print(log_reg_model.confusion_matrix)
+print(log_reg_model_01.number_of_iterations)
 
-# Compute precision, recall, F-measure and support
-print(sklearn.metrics.classification_report(y_test, log_reg_model.X_test_predicted_class_labels))
 
-# ROC Curve
-#logit_roc_auc = roc_auc_score(y_test, logreg.predict_proba(X_test))
-log_reg_model.logit_roc_auc = sklearn.metrics.roc_auc_score(y_test, log_reg_model.X_test_predicted_class_labels)
-print('logit_roc_auc: ', log_reg_model.logit_roc_auc)
+#%%
 
-log_reg_model.fpr, log_reg_model.tpr, log_reg_model.thresholds = sklearn.metrics.roc_curve(y_test, log_reg_model.X_test_predicted_probability_estimates[:,1])
-#print('fpr, tpr, thresholds: ', fpr, tpr, thresholds)
+print(log_reg_model_01.intercept)
+
+
+#%%
+
+log_reg_model_01.coefficients_dict = dict(zip(log_reg_model_01.independent_column_names, list(log_reg_model_01.coefficients[0])))
+print(log_reg_model_01.coefficients_dict)
+
+
+#%%
+
+print('Mean Accuracy on training data-set: {:.5f}'.format(log_reg_model_01.score_train))
+print('Mean Accuracy on testing data-set: {:.5f}'.format(log_reg_model_01.score_test))
+
+
+#%%
+
+#print(log_reg_model_01.confusion_matrix)
+print('True Positves:   {:>6,}'.format(log_reg_model_01.true_positive_count))
+print('False Positves:  {:>6,}'.format(log_reg_model_01.false_positive_count))
+print('False Negatives: {:>6,}'.format(log_reg_model_01.false_negative_count))
+print('True Negatives:  {:>6,}'.format(log_reg_model_01.true_negative_count))
+
+
+#%%
+
+print('Classification Report:', '\n', log_reg_model_01.classification_report)
+
+
+#%%
+
+print('Area Under the ROC Curve (AUC): {:.5f}'.format(log_reg_model_01.logit_roc_auc))
+
+
+#%%
+
 matplotlib.pyplot.figure()
-matplotlib.pyplot.plot(log_reg_model.fpr, log_reg_model.tpr, label='Logistic Regression (AUC = %0.5f)' % log_reg_model.logit_roc_auc)
+matplotlib.pyplot.plot(log_reg_model_01.fpr, log_reg_model_01.tpr, label='Logistic Regression (AUC = %0.5f)' % log_reg_model_01.logit_roc_auc)
 matplotlib.pyplot.plot([0, 1], [0, 1],'r--')
 matplotlib.pyplot.xlim([0.0, 1.0])
 matplotlib.pyplot.ylim([0.0, 1.05])
@@ -580,5 +585,211 @@ matplotlib.pyplot.xlabel('False Positive Rate')
 matplotlib.pyplot.ylabel('True Positive Rate')
 matplotlib.pyplot.title('Receiver Operating Characteristic')
 matplotlib.pyplot.legend(loc="lower right")
-matplotlib.pyplot.savefig('Log_ROC')
+#matplotlib.pyplot.savefig('Log_ROC')
 matplotlib.pyplot.show()
+
+
+#%% 
+
+print()
+print('Instantiating the LogRegModel class...')
+print()
+
+log_reg_model_02 = LogRegModel()
+
+
+#%%
+
+dependent_column_name = 'TARGET'
+
+independent_column_names = [
+'EXT_SOURCE_1',
+'EXT_SOURCE_2',
+'EXT_SOURCE_3'
+]
+
+log_reg_model_02.dependent_column_name = dependent_column_name
+log_reg_model_02.independent_column_names = independent_column_names
+
+
+#%%
+
+y = df[dependent_column_name]
+
+X = df.loc[:,independent_column_names]
+
+
+#%%
+
+print()
+print('Splitting Trainging and Testing data-sets...')
+print()
+
+X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(X, y, test_size=0.3, random_state=random_seed)
+
+
+#%%
+
+# Logistic Regression Model
+# Fitted Values
+# Predicted Values
+# Model Evaluation Scoring Metrics
+
+print()
+print('Instantiating LogisticRegression class...')
+print()
+
+logreg = sklearn.linear_model.LogisticRegression(
+        penalty='l2',
+        dual=False,
+        tol=0.0001,
+        #C=1.0,
+        C=20.0,
+        fit_intercept=True,
+        intercept_scaling=1,
+        #class_weight=None,
+        class_weight='balanced',
+        #random_state=None,
+        random_state=random_seed,
+        solver='liblinear',
+        max_iter=100,
+        multi_class='ovr',
+        #verbose=0,
+        verbose=1,
+        warm_start=False,
+        n_jobs=1
+        )
+
+#%% 
+
+print()
+print('Training the model...')
+print()
+
+logreg.fit(X_train, y_train, sample_weight=None)
+
+
+#%%
+
+log_reg_model_02.coefficients = logreg.coef_
+log_reg_model_02.intercept = logreg.intercept_
+log_reg_model_02.number_of_iterations = logreg.n_iter_
+
+log_reg_model_02.params = logreg.get_params()
+
+log_reg_model_02.X_test_predicted_class_labels = logreg.predict(X_test)
+log_reg_model_02.X_test_predicted_log_probability_estimates = logreg.predict_log_proba(X_test)
+log_reg_model_02.X_test_predicted_probability_estimates = logreg.predict_proba(X_test)
+log_reg_model_02.X_test_predicted_confidence_scores = logreg.decision_function(X_test)
+
+log_reg_model_02.score_train = logreg.score(X_train, y_train, sample_weight=None)
+log_reg_model_02.score_test = logreg.score(X_test, y_test, sample_weight=None)
+log_reg_model_02.confusion_matrix = sklearn.metrics.confusion_matrix(y_test, log_reg_model_02.X_test_predicted_class_labels)
+log_reg_model_02.classification_report = sklearn.metrics.classification_report(y_test, log_reg_model_02.X_test_predicted_class_labels)
+log_reg_model_02.logit_roc_auc = sklearn.metrics.roc_auc_score(y_test, log_reg_model_02.X_test_predicted_class_labels)
+log_reg_model_02.fpr, log_reg_model_02.tpr, log_reg_model_02.thresholds = sklearn.metrics.roc_curve(y_test, log_reg_model_02.X_test_predicted_probability_estimates[:,1])
+
+
+#%%
+
+log_reg_model_02.true_negative_count, log_reg_model_02.false_positive_count, log_reg_model_02.false_negative_count, log_reg_model_02.true_positive_count = log_reg_model_02.confusion_matrix.ravel()
+
+
+#%%
+
+log_reg_model_02.df_X_test_predicted_class_labels = pandas.DataFrame(log_reg_model_02.X_test_predicted_class_labels)
+log_reg_model_02.df_X_test_predicted_class_labels.columns = ['Late_Payments']
+
+log_reg_model_02.df_X_test_predicted_probability_estimates = pandas.DataFrame(log_reg_model_02.X_test_predicted_probability_estimates)
+log_reg_model_02.df_X_test_predicted_probability_estimates.columns = ['OnTime_Payments_Probability', 'Late_Payments_Probability']
+
+log_reg_model_02.df_X_test_predicted_log_probability_estimates = pandas.DataFrame(log_reg_model_02.X_test_predicted_log_probability_estimates)
+#df_X_test_predicted_log_of_probability_estimates.columns = ['']
+
+log_reg_model_02.df_X_test_predicted_confidence_scores = pandas.DataFrame(log_reg_model_02.X_test_predicted_confidence_scores)
+#df_X_test_predicted_confidence_scores.columns = ['']
+
+
+#%%
+
+print(log_reg_model_02.params)
+
+
+#%%
+
+print(log_reg_model_02.number_of_iterations)
+
+
+#%%
+
+print(log_reg_model_02.intercept)
+
+
+#%%
+
+log_reg_model_02.coefficients_dict = dict(zip(log_reg_model_02.independent_column_names, list(log_reg_model_02.coefficients[0])))
+log_reg_model_02.coefficients_dict
+
+
+#%%
+
+print('Mean Accuracy on training data-set: {:.5f}'.format(log_reg_model_02.score_train))
+print('Mean Accuracy on testing data-set: {:.5f}'.format(log_reg_model_02.score_test))
+
+
+#%%
+
+#print(log_reg_model_02.confusion_matrix)
+print('True Positves:   {:>6,}'.format(log_reg_model_02.true_positive_count))
+print('False Positves:  {:>6,}'.format(log_reg_model_02.false_positive_count))
+print('False Negatives: {:>6,}'.format(log_reg_model_02.false_negative_count))
+print('True Negatives:  {:>6,}'.format(log_reg_model_02.true_negative_count))
+
+
+#%%
+
+print('Classification Report:', '\n', log_reg_model_02.classification_report)
+
+
+#%%
+
+print('Area Under the ROC Curve (AUC): {:.5f}'.format(log_reg_model_02.logit_roc_auc))
+
+
+#%%
+
+matplotlib.pyplot.figure()
+matplotlib.pyplot.plot(log_reg_model_02.fpr, log_reg_model_02.tpr, label='Logistic Regression (AUC = %0.5f)' % log_reg_model_02.logit_roc_auc)
+matplotlib.pyplot.plot([0, 1], [0, 1],'r--')
+matplotlib.pyplot.xlim([0.0, 1.0])
+matplotlib.pyplot.ylim([0.0, 1.05])
+matplotlib.pyplot.xlabel('False Positive Rate')
+matplotlib.pyplot.ylabel('True Positive Rate')
+matplotlib.pyplot.title('Receiver Operating Characteristic')
+matplotlib.pyplot.legend(loc="lower right")
+#matplotlib.pyplot.savefig('Log_ROC')
+matplotlib.pyplot.show()
+
+##%%
+#
+##If I exponentiate it, I get exp(.0885629)=1.092603.
+##This tells me that black college graduates are 1.09 times more likely...
+#
+#math.exp(log_reg_model_02.intercept)
+##> 27.061477123450594
+#
+#math.exp(log_reg_model_02.coefficients[0][0])
+##> 1.4418632857489724
+## Men (CODE_GENDER=1) are 1.44 times more likely to have a late payment
+#
+#math.exp(log_reg_model_02.intercept) + math.exp(log_reg_model_02.coefficients[0][0])
+##> 28.503340409199566
+## Overall, men's late payment rate is 28.50
+
+#%%
+
+print(log_reg_model_01.coefficients_dict)
+print(log_reg_model_02.coefficients_dict)
+
+print('Area Under the ROC Curve (AUC): {:.5f}'.format(log_reg_model_01.logit_roc_auc))
+print('Area Under the ROC Curve (AUC): {:.5f}'.format(log_reg_model_02.logit_roc_auc))
