@@ -105,6 +105,6 @@ venv.bak/
 
 #csv files
 .csv
-
+*.csv
 #zip files
 .zip
